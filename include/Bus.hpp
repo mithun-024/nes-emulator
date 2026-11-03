@@ -2,7 +2,7 @@
 #define BUS_HPP
 
 #include <cstdint>
-#include <memory>
+#include <array>
 #include "RAM.hpp"
 
 class Bus {
@@ -19,6 +19,11 @@ public:
 
 private:
     RAM ram;
+
+    // TEMPORARY placeholder for cartridge space (0x4020-0xFFFF).
+    // Lets tests plant the reset vector at 0xFFFC before the real
+    // iNES cartridge loader + Mapper 0 arrive in Milestone 4.
+    std::array<uint8_t, 0x10000> cartSpace{};
 };
 
 #endif // BUS_HPP

@@ -19,12 +19,11 @@ void testRAMMirroring() {
     assert(bus.cpuRead(0x17FF) == 0x55);
     assert(bus.cpuRead(0x1FFF) == 0x55);
 
-    std::cout << "[PASS] RAM mirroring test passed!" << std::endl;
+    std::cout << "[PASS] RAM mirroring" << std::endl;
 }
 
-int main() {
+void run_bus_tests() {
     std::cout << "Running Bus & RAM tests..." << std::endl;
     testRAMMirroring();
-    std::cout << "All tests passed successfully!" << std::endl;
-    return 0;
+    std::cout << "Bus & RAM tests passed!" << std::endl;
 }

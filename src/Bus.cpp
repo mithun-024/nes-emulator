@@ -21,8 +21,8 @@ uint8_t Bus::cpuRead(uint16_t addr) const {
     }
     // 0x4020 - 0xFFFF: Cartridge Space (PRG ROM, PRG RAM, Mapper)
     else if (addr >= 0x4020) {
-        // TODO: Cartridge / Mapper read implementation in Milestone 4
-        return 0x00;
+        // TEMPORARY: direct buffer until the real iNES loader + Mapper 0 (Milestone 4)
+        return cartSpace[addr];
     }
 
     return 0x00;
@@ -43,6 +43,7 @@ void Bus::cpuWrite(uint16_t addr, uint8_t data) {
     }
     // 0x4020 - 0xFFFF: Cartridge Space
     else if (addr >= 0x4020) {
-        // TODO: Cartridge / Mapper write implementation
+        // TEMPORARY: direct buffer until the real iNES loader + Mapper 0 (Milestone 4)
+        cartSpace[addr] = data;
     }
 }
