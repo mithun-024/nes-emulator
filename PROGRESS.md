@@ -4,6 +4,18 @@ This log records every step of development so anyone can resume and understand t
 
 ## Completed Milestones
 
+### Milestone 6: PPU Rendering + SDL2 Window ✅
+- **Concept**: The PPU produces one frame every 262 scanlines × 341 dots = 89342 dots ≈ 29781 CPU cycles (NTSC: 3 PPU dots per CPU cycle). CPU and PPU run in lockstep: after every CPU instruction the PPU advances 3 dots per cycle consumed (including OAM DMA stalls), and a pending NMI is serviced between instructions (+7 cycles). The finished 256×240 ARGB8888 framebuffer is presented through an SDL2 streaming texture at ~60 fps.
+- **Code**:
+  - `include/System.hpp` / `src/System.cpp` — `step()` (instruction + PPU sync + NMI + DMA stall), `runFrame()`, `runCycles()`.
+  - `src/main.cpp` — SDL2 window (256×240 at 3× integer scale), event loop (ESC/quit), ~60 fps cap, FPS title.
+  - `CMakeLists.txt` — `find_package(SDL2)`; if missing, the `nes_emulator` target is disabled with a warning so tests still build headless.
+  - `tests/test_render.cpp` — background pixel + left-clip, sprite placement, steady-state frame length (29781 ±10 cycles), NMI integration (hand-assembled 6502 program counts NMIs into RAM), OAM DMA stall consumed by `System::step`.
+- **Bugs caught by tests** (both test-side, not renderer-side):
+  1. Expected palette `$21` = `0xFF4240FF` — that is actually `$12`; correct `$21` is `0xFF64B0FF`.
+  2. Sprite test left the other 63 OAM entries at y=0 (reset fill), so 7 ghost sprites (tile 0, x=0) drew at the left edge; fixtures now hide them with y=$FF.
+- **Verified**: all tests pass; nestest **8991/8991**; `./nes_emulator nestest.nes` opens a window and renders nestest's menu (headless check: 5375 non-black pixels after 120 frames).
+
 ### Milestone 5: PPU Registers & Memory Mapping ✅
 - **Concept**: The CPU sees PPU registers at `$2000–$2007`, mirrored every 8 bytes through `$3FFF`. Internally the PPU owns 2KB CIRAM (nametables), 256B OAM, and 32B palette RAM. `$2005`/`$2006` share a two-write address latch (loopy `v`/`t`/`x`/`w`); reading `$2002` clears vblank **and** resets that latch. `$2007` is buffered for nametable/palette reads (palette is unbuffered) and increments `v` by 1 or 32 based on PPUCTRL bit 2. Nametable mirroring (H: `|A|A|B|B|`, V: `|A|B|A|B|`) comes from the cartridge header.
 - **Code**:
@@ -88,10 +100,10 @@ CMake builds two targets: `nes_emulator` (src/main.cpp) and `nes_tests` (tests +
 **Bug hit during build**: `size_t` required `#include <cstddef>` in `include/RAM.hpp` — C++ headers do not leak into each other.
 
 ## Active Step
-(None — between milestones. Next: Milestone 6, PPU rendering + SDL2 window.)
+(None — between milestones. Next: Milestone 7, controller input.)
 
 ## Next Steps
-- [ ] Milestone 6: PPU rendering + SDL2 window.
+- [x] Milestone 6: PPU rendering + SDL2 window.
 - [ ] Milestone 7: Controller input.
 - [ ] Milestone 8: APU + advanced mappers (MMC1/MMC3).
 
