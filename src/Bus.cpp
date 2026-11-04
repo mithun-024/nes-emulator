@@ -41,7 +41,14 @@ uint8_t Bus::cpuRead(uint16_t addr) const {
     }
     // 0x4000 - 0x4017: APU & I/O Registers
     else if (addr >= 0x4000 && addr <= 0x4017) {
-        // TODO: APU / Controllers implementation
+        // Controller ports shift out one button bit per read
+        if (addr == 0x4016) {
+            return const_cast<Controller&>(controllers[0]).read();
+        }
+        if (addr == 0x4017) {
+            return const_cast<Controller&>(controllers[1]).read();
+        }
+        // TODO: APU read ($4015) implementation
         return 0x00;
     }
     // 0x4020 - 0xFFFF: Cartridge Space
@@ -75,8 +82,12 @@ void Bus::cpuWrite(uint16_t addr, uint8_t data) {
             }
             // DMA stalls the CPU for 513 cycles (+1 on odd CPU cycle — we use 513)
             dmaStall += 513;
+        } else if (addr == 0x4016) {
+            // Strobe line is shared: one write clocks both controller ports
+            controllers[0].write(data);
+            controllers[1].write(data);
         }
-        // TODO: APU / Controller write implementation
+        // TODO: APU write implementation
     }
     // 0x4020 - 0xFFFF: Cartridge Space
     else if (addr >= 0x4020) {

@@ -4,6 +4,16 @@ This log records every step of development so anyone can resume and understand t
 
 ## Completed Milestones
 
+### Milestone 7: Controller Input ✅
+- **Concept**: The NES controller is an 8-bit parallel-load shift register. The CPU writes `$4016` bit 0 high then low (strobe); while high the register reloads continuously (reads return A), and the falling edge latches the buttons. Each subsequent read of `$4016`/`$4017` clocks out one bit in fixed order — **A, B, Select, Start, Up, Down, Left, Right** — and reads past the eighth return 1 (official pad behavior). The strobe line is shared: one `$4016` write latches both ports; `$4016` reads port 1, `$4017` reads port 2.
+- **Code**:
+  - `include/Controller.hpp` / `src/Controller.cpp` — button bitmap, strobe latch, serial `read()` (shifts right, fills with 1s after 8).
+  - `include/Bus.hpp` / `src/Bus.cpp` — two controller ports; `$4016`/`$4017` reads clock the shifters, `$4016` writes strobe both (APU `$4015` still a stub).
+  - `src/main.cpp` — SDL keyboard → port 1: `X`=A, `Z`=B, `RShift`=Select, `Enter`=Start, arrows=D-pad (polled each frame via `SDL_GetKeyboardState`).
+  - `tests/test_controller.cpp` — serial bit order, all/none pressed, 9th+ reads return 1, strobe-held-high live reads, port independence, latch freeze across button release, re-strobe picks up new state.
+- **Bug caught by tests**: expected constant `0x42` for B+Right — `BTN_RIGHT` is bit 7, so the value is `0x82` (test arithmetic error, not the shifter).
+- **Verified**: all tests pass; nestest **8991/8991**.
+
 ### Milestone 6: PPU Rendering + SDL2 Window ✅
 - **Concept**: The PPU produces one frame every 262 scanlines × 341 dots = 89342 dots ≈ 29781 CPU cycles (NTSC: 3 PPU dots per CPU cycle). CPU and PPU run in lockstep: after every CPU instruction the PPU advances 3 dots per cycle consumed (including OAM DMA stalls), and a pending NMI is serviced between instructions (+7 cycles). The finished 256×240 ARGB8888 framebuffer is presented through an SDL2 streaming texture at ~60 fps.
 - **Code**:
@@ -87,7 +97,7 @@ The CPU is dumb: it puts a 16-bit address on the wires and asks for read/write; 
 |---|---|---|
 | 0x0000–0x1FFF | Internal RAM | done |
 | 0x2000–0x3FFF | PPU registers | done → Milestone 5 |
-| 0x4000–0x4017 | APU + joypads | stub → Milestone 7/8 |
+| 0x4000–0x4017 | APU + joypads | joypads done → Milestone 7; APU stub → Milestone 8 |
 | 0x4020–0xFFFF | Cartridge (PRG ROM / mapper) | done → Milestone 4 (Mapper 0) |
 Stubs return 0x00 so the build stays green — pattern used all project: interface now, implement later.
 
@@ -100,11 +110,11 @@ CMake builds two targets: `nes_emulator` (src/main.cpp) and `nes_tests` (tests +
 **Bug hit during build**: `size_t` required `#include <cstddef>` in `include/RAM.hpp` — C++ headers do not leak into each other.
 
 ## Active Step
-(None — between milestones. Next: Milestone 7, controller input.)
+(None — between milestones. Next: Milestone 8, APU + advanced mappers.)
 
 ## Next Steps
 - [x] Milestone 6: PPU rendering + SDL2 window.
-- [ ] Milestone 7: Controller input.
+- [x] Milestone 7: Controller input.
 - [ ] Milestone 8: APU + advanced mappers (MMC1/MMC3).
 
 ## How to resume after a break

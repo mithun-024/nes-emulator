@@ -10,6 +10,19 @@ static const int kWinScale = 3;
 static const int kWidth = 256;
 static const int kHeight = 240;
 
+// Keyboard → port 1 (classic emulator layout)
+static void updateInput(Controller& pad) {
+    const uint8_t* keys = SDL_GetKeyboardState(nullptr);
+    pad.set(Controller::BTN_A, keys[SDL_SCANCODE_X] != 0);
+    pad.set(Controller::BTN_B, keys[SDL_SCANCODE_Z] != 0);
+    pad.set(Controller::BTN_SELECT, keys[SDL_SCANCODE_RSHIFT] != 0);
+    pad.set(Controller::BTN_START, keys[SDL_SCANCODE_RETURN] != 0);
+    pad.set(Controller::BTN_UP, keys[SDL_SCANCODE_UP] != 0);
+    pad.set(Controller::BTN_DOWN, keys[SDL_SCANCODE_DOWN] != 0);
+    pad.set(Controller::BTN_LEFT, keys[SDL_SCANCODE_LEFT] != 0);
+    pad.set(Controller::BTN_RIGHT, keys[SDL_SCANCODE_RIGHT] != 0);
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::printf("NES Emulator - Milestone 6: PPU rendering + SDL2\n");
@@ -89,6 +102,8 @@ int main(int argc, char* argv[]) {
                 running = false;
             }
         }
+
+        updateInput(sys.bus.port1());
 
         sys.runFrame();
 

@@ -8,6 +8,7 @@
 #include "PPU.hpp"
 #include "Cartridge.hpp"
 #include "Mapper.hpp"
+#include "Controller.hpp"
 
 class Bus {
 public:
@@ -29,6 +30,10 @@ public:
     RAM& getRAM() { return ram; }
     PPU& getPPU() { return ppu; }
 
+    // Controller ports ($4016 = port 1, $4017 = port 2)
+    Controller& port1() { return controllers[0]; }
+    Controller& port2() { return controllers[1]; }
+
     // Extra CPU cycles stalled by OAM DMA ($4014); main loop consumes these
     int takeDmaStall() {
         const int s = dmaStall;
@@ -39,6 +44,7 @@ public:
 private:
     RAM ram;
     PPU ppu;
+    Controller controllers[2];
 
     std::unique_ptr<Cartridge> cartridge;
     std::unique_ptr<Mapper> mapper;
