@@ -25,6 +25,9 @@ public:
     // Non-maskable interrupt: pushes PC+P, loads PC from 0xFFFA
     void nmi();
 
+    // Maskable interrupt: pushes PC+P, loads PC from 0xFFFE (if I clear)
+    void irq();
+
     // Fetch, decode and execute one instruction; advances total_cycles
     void step();
 

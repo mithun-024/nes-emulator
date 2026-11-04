@@ -7,6 +7,9 @@ void run_ppu_tests();
 void run_render_tests();
 void run_controller_tests();
 void run_nestest_tests();
+void run_apu_tests();
+void run_mmc1_tests();
+void run_mmc3_tests();
 
 int main() {
     run_bus_tests();
@@ -16,6 +19,9 @@ int main() {
     run_render_tests();
     run_controller_tests();
     run_nestest_tests();
+    run_apu_tests();
+    run_mmc1_tests();
+    run_mmc3_tests();
     std::cout << "\nAll tests passed successfully!" << std::endl;
     return 0;
 }

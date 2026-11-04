@@ -47,9 +47,26 @@ int main(int argc, char* argv[]) {
     sys.reset();
     std::printf("Reset -> PC = 0x%04X\n", sys.cpu.PC);
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
+    }
+
+    // Audio: 44.1 kHz mono int16 fed from the APU (non-fatal if unavailable)
+    SDL_AudioDeviceID audioDev = 0;
+    {
+        SDL_AudioSpec want{};
+        SDL_AudioSpec have{};
+        want.freq = 44100;
+        want.format = AUDIO_S16SYS;
+        want.channels = 1;
+        want.samples = 1024;
+        audioDev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+        if (audioDev == 0) {
+            std::fprintf(stderr, "Audio disabled: %s\n", SDL_GetError());
+        } else {
+            SDL_PauseAudioDevice(audioDev, 0);
+        }
     }
 
     SDL_Window* window = SDL_CreateWindow(
@@ -107,6 +124,19 @@ int main(int argc, char* argv[]) {
 
         sys.runFrame();
 
+        // Push this frame's APU samples to the audio device
+        if (audioDev != 0) {
+            const auto samples = sys.bus.getAPU().drainSamples();
+            if (!samples.empty()) {
+                // Drop audio if the queue backs up (host slower than realtime)
+                if (SDL_GetQueuedAudioSize(audioDev) > 16384) {
+                    SDL_ClearQueuedAudio(audioDev);
+                }
+                SDL_QueueAudio(audioDev, samples.data(),
+                               static_cast<Uint32>(samples.size() * sizeof(int16_t)));
+            }
+        }
+
         SDL_UpdateTexture(texture, nullptr, sys.bus.getPPU().framebuffer(),
                           kWidth * 4);
         SDL_RenderClear(renderer);
@@ -133,6 +163,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (audioDev != 0) {
+        SDL_CloseAudioDevice(audioDev);
+    }
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

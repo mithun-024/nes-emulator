@@ -1,8 +1,16 @@
 #include "Bus.hpp"
 #include "Mapper0.hpp"
+#include "Mapper1.hpp"
+#include "Mapper3.hpp"
 #include <iostream>
 
 Bus::Bus() {
+    apu.setBus(this);
+}
+
+bool Bus::irqPending() const {
+    if (apu.irqPending()) return true;
+    return mapper != nullptr && mapper->irqPending();
 }
 
 bool Bus::insertCartridge(std::unique_ptr<Cartridge> cart, std::string* error) {
@@ -16,6 +24,12 @@ bool Bus::insertCartridge(std::unique_ptr<Cartridge> cart, std::string* error) {
     case 0:
         newMapper = std::make_unique<Mapper0>(*cart);
         break;
+    case 1:
+        newMapper = std::make_unique<Mapper1>(*cart);
+        break;
+    case 4:
+        newMapper = std::make_unique<Mapper3>(*cart);
+        break;
     default:
         if (error) {
             *error = "unsupported mapper: " + std::to_string(cart->mapperId());
@@ -26,6 +40,7 @@ bool Bus::insertCartridge(std::unique_ptr<Cartridge> cart, std::string* error) {
     const bool vertical = cart->verticalMirroring();
     cartridge = std::move(cart);
     mapper = std::move(newMapper);
+    mapper->setBus(this);
     ppu.setMapper(mapper.get(), vertical);
     return true;
 }
@@ -41,6 +56,10 @@ uint8_t Bus::cpuRead(uint16_t addr) const {
     }
     // 0x4000 - 0x4017: APU & I/O Registers
     else if (addr >= 0x4000 && addr <= 0x4017) {
+        // APU status (also acknowledges the frame IRQ)
+        if (addr == 0x4015) {
+            return const_cast<APU&>(apu).readStatus();
+        }
         // Controller ports shift out one button bit per read
         if (addr == 0x4016) {
             return const_cast<Controller&>(controllers[0]).read();
@@ -48,12 +67,15 @@ uint8_t Bus::cpuRead(uint16_t addr) const {
         if (addr == 0x4017) {
             return const_cast<Controller&>(controllers[1]).read();
         }
-        // TODO: APU read ($4015) implementation
         return 0x00;
     }
     // 0x4020 - 0xFFFF: Cartridge Space
     else if (addr >= 0x4020) {
         if (mapper) {
+            // MMC3: any CPU read in $E000–$FFFF acknowledges its IRQ
+            if (addr >= 0xE000) {
+                const_cast<Mapper&>(*mapper).irqAcknowledge();
+            }
             return mapper->cpuRead(addr);
         }
         // No cartridge: flat buffer so tests can plant vectors
@@ -86,8 +108,10 @@ void Bus::cpuWrite(uint16_t addr, uint8_t data) {
             // Strobe line is shared: one write clocks both controller ports
             controllers[0].write(data);
             controllers[1].write(data);
+        } else {
+            // APU registers: $4000–$4013, $4015, $4017
+            apu.write(addr, data);
         }
-        // TODO: APU write implementation
     }
     // 0x4020 - 0xFFFF: Cartridge Space
     else if (addr >= 0x4020) {

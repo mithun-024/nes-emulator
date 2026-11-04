@@ -21,11 +21,19 @@ int System::step() {
     // OAM DMA ($4014) stalls the CPU while the PPU keeps running
     cycles += bus.takeDmaStall();
     tickPpu(cycles);
+    bus.tickApu(cycles);
 
     // Service a pending NMI between instructions (7 more cycles, PPU keeps time)
     if (bus.getPPU().takeNmi()) {
         cpu.nmi();
         tickPpu(7);
+        bus.tickApu(7);
+        cycles += 7;
+    } else if (bus.irqPending() && !cpu.getFlag(CPU::FLAG_I)) {
+        // Level-triggered IRQ (APU frame/DMC or mapper); NMI has priority
+        cpu.irq();
+        tickPpu(7);
+        bus.tickApu(7);
         cycles += 7;
     }
     return cycles;

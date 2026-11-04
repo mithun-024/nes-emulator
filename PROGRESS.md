@@ -4,6 +4,25 @@ This log records every step of development so anyone can resume and understand t
 
 ## Completed Milestones
 
+### Milestone 8: APU + MMC1/MMC3 Mappers ✅
+- **Concept**: The APU has 4 channel types — 2 pulse channels (duty-cycle waveform + hardware sweep), triangle (linear counter, no volume), noise (LFSR), and DMC (delta-modulated sample playback from CPU memory). A programmable frame counter clocks envelope/length/sweep units at 4-step (29830 CPU cycles, raises frame IRQ at 29829) or 5-step (37282, no IRQ) rates. `$4015` enables channels and reports status/IRQ flags; `$4017` selects frame mode. Output mixes to 44.1 kHz mono samples queued to SDL audio. **MMC1 (mapper 1)** writes a 5-bit shift register serially (LSB first, bit 7 resets) into control/CHR/PRG registers: PRG modes 0/1 switch 32KB at `$8000`, mode 2 fixes first bank + switches `$C000`, mode 3 switches `$8000` + fixes last; CHR is 4KB×2 or 8KB (R1 ignored); control bits 0–1 select one of 4 mirroring modes. **MMC3 (mapper 4)** uses `$8000`/`$8001` index/data pairs for 8KB PRG and 1KB/2KB CHR banking, `$A000` mirroring, and a scanline IRQ counter (`$C000` latch, `$C001` reload, `$E000`/`$E001` disable/enable) clocked once per rendered scanline — CPU reads of `$E000–$FFFF` acknowledge.
+- **Code**:
+  - `include/APU.hpp` / `src/APU.cpp` — pulse/triangle/noise/DMC channels, frame counter, length/envelope/sweep units, 44.1 kHz mixer + `drainSamples()`, frame & DMC IRQs, test hooks.
+  - `include/Mapper1.hpp` / `src/Mapper3.cpp` → `Mapper1`/`Mapper3` — full MMC1 serial protocol + banking; MMC3 banking + IRQ counter (`scanlineTick()`).
+  - `include/Bus.hpp` / `src/Bus.cpp` — `$4000–$4013/$4015/$4017` → APU, `irqPending()` = APU OR mapper, `setMirror()`, `addDmaStall()` (DMC), mapper IRQ ack on `$E000+` reads, mappers 1 & 4 in `insertCartridge`.
+  - `include/CPU.hpp` / `src/CPU.cpp` — `irq()` (push PC+P, vector `$FFFE`, +7 cycles) for level-triggered interrupts.
+  - `include/PPU.hpp` / `src/PPU.cpp` — `Mirror` extended with `SingleLow`/`SingleHigh`; clocks `mapper->scanlineTick()` at dot 260 of rendered scanlines.
+  - `src/System.cpp` — `step()` ticks the APU alongside the PPU and services a pending IRQ when the I flag is clear (NMI has priority).
+  - `src/main.cpp` — SDL audio device (44.1 kHz mono), per-frame `drainSamples()` → `SDL_QueueAudio`.
+  - `tests/test_apu.cpp`, `tests/test_mmc1.cpp`, `tests/test_mmc3.cpp` — 11 + 9 + 10 tests; registered in `tests/main.cpp`.
+- **Bugs caught before tests ran** (found in review of the new mapper code, fixed then verified by tests):
+  1. MMC1 8KB CHR mode used `chrBank1` for `$1000–$1FFF` — in 8KB mode R0 covers the whole `$0000–$1FFF` (R1 ignored).
+  2. MMC1 PRG modes lumped mode 1 with mode 3 — modes **0 and 1** are both 32KB switching; mode 2 fixes first, mode 3 fixes last.
+  3. MMC3 2KB CHR slots scaled the base with `×2` and split pages with `>>11` — 1KB base is `reg & 0xFE` (no ×2), half selected by `>>10`.
+  4. MMC3 didn't mask R6/R7 top bits (64×8KB limit) — added `& 0x3F`.
+  5. Stale `test_cartridge` fixture still expected mapper 4 rejection — now supported; switched the unsupported-mapper test to mapper 2 (UxROM).
+- **Verified**: **171 assertions** pass (incl. nestest **8991/8991**); headless `./nes_emulator nestest.nes` runs with audio queued (3 s smoke test, no crash).
+
 ### Milestone 7: Controller Input ✅
 - **Concept**: The NES controller is an 8-bit parallel-load shift register. The CPU writes `$4016` bit 0 high then low (strobe); while high the register reloads continuously (reads return A), and the falling edge latches the buttons. Each subsequent read of `$4016`/`$4017` clocks out one bit in fixed order — **A, B, Select, Start, Up, Down, Left, Right** — and reads past the eighth return 1 (official pad behavior). The strobe line is shared: one `$4016` write latches both ports; `$4016` reads port 1, `$4017` reads port 2.
 - **Code**:
@@ -97,7 +116,7 @@ The CPU is dumb: it puts a 16-bit address on the wires and asks for read/write; 
 |---|---|---|
 | 0x0000–0x1FFF | Internal RAM | done |
 | 0x2000–0x3FFF | PPU registers | done → Milestone 5 |
-| 0x4000–0x4017 | APU + joypads | joypads done → Milestone 7; APU stub → Milestone 8 |
+| 0x4000–0x4017 | APU + joypads | done → Milestones 7 + 8 |
 | 0x4020–0xFFFF | Cartridge (PRG ROM / mapper) | done → Milestone 4 (Mapper 0) |
 Stubs return 0x00 so the build stays green — pattern used all project: interface now, implement later.
 
@@ -110,12 +129,13 @@ CMake builds two targets: `nes_emulator` (src/main.cpp) and `nes_tests` (tests +
 **Bug hit during build**: `size_t` required `#include <cstddef>` in `include/RAM.hpp` — C++ headers do not leak into each other.
 
 ## Active Step
-(None — between milestones. Next: Milestone 8, APU + advanced mappers.)
+(None — between milestones. Milestone 8 (APU + MMC1/MMC3) landed; tests at 171 assertions.)
 
 ## Next Steps
 - [x] Milestone 6: PPU rendering + SDL2 window.
 - [x] Milestone 7: Controller input.
-- [ ] Milestone 8: APU + advanced mappers (MMC1/MMC3).
+- [x] Milestone 8: APU + advanced mappers (MMC1/MMC3).
+- [ ] Milestone 9: candidates — more mappers (UxROM/CNROM/MMC2), blargg APU/PPU test ROMs, save states, gamepad config.
 
 ## How to resume after a break
 1. Read this file (PROGRESS.md) — it is the source of truth for state.

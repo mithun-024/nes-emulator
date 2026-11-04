@@ -9,6 +9,9 @@ class Mapper;
 // Picture Processing Unit: registers, memory map, scanline renderer, timing.
 class PPU {
 public:
+    // Nametable mirroring modes (set from the cartridge / mapper)
+    enum class Mirror { Horizontal, Vertical, SingleLow, SingleHigh };
+
     PPU();
 
     void reset();
@@ -26,6 +29,9 @@ public:
 
     // Called by Bus when a cartridge is inserted/removed
     void setMapper(Mapper* m, bool vertical);
+    // Mirroring can change at runtime (MMC1 control register, MMC3 $A000)
+    void setMirror(Mirror m) { mirror = m; }
+    Mirror mirrorMode() const { return mirror; }
 
     // Frame output: 256×240 ARGB8888, set at the start of vblank
     const uint32_t* framebuffer() const { return fb.data(); }
@@ -57,7 +63,7 @@ private:
     void copyVerticalBits();
 
     Mapper* mapper = nullptr;
-    bool verticalMirroring = true;
+    Mirror mirror = Mirror::Vertical;
 
     // 2KB CIRAM (nametables), 256B OAM, 32B palette
     std::array<uint8_t, 0x800> vram{};

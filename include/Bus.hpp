@@ -6,6 +6,7 @@
 #include <memory>
 #include "RAM.hpp"
 #include "PPU.hpp"
+#include "APU.hpp"
 #include "Cartridge.hpp"
 #include "Mapper.hpp"
 #include "Controller.hpp"
@@ -34,6 +35,22 @@ public:
     Controller& port1() { return controllers[0]; }
     Controller& port2() { return controllers[1]; }
 
+    // Advance the APU by N CPU cycles (generates audio samples)
+    void tickApu(int cycles) { apu.tick(cycles); }
+    APU& getAPU() { return apu; }
+
+    // Level-triggered interrupt line: APU frame/DMC IRQ or mapper IRQ
+    bool irqPending() const;
+
+    // Change nametable mirroring at runtime (called by mappers)
+    void setMirror(PPU::Mirror m) { ppu.setMirror(m); }
+
+    // Current mapper (nullptr without a cartridge) — tests use this
+    Mapper* getMapper() { return mapper.get(); }
+
+    // Extra CPU cycles stolen by DMC/OAM DMA
+    void addDmaStall(int cycles) { dmaStall += cycles; }
+
     // Extra CPU cycles stalled by OAM DMA ($4014); main loop consumes these
     int takeDmaStall() {
         const int s = dmaStall;
@@ -44,6 +61,7 @@ public:
 private:
     RAM ram;
     PPU ppu;
+    APU apu;
     Controller controllers[2];
 
     std::unique_ptr<Cartridge> cartridge;

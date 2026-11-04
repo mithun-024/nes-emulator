@@ -22,6 +22,15 @@ void CPU::nmi() {
     total_cycles += 7;
 }
 
+void CPU::irq() {
+    push16(PC);
+    uint8_t p = static_cast<uint8_t>((P | FLAG_U) & ~FLAG_B);
+    push8(p);
+    setFlag(FLAG_I, true);
+    PC = read16(0xFFFE);
+    total_cycles += 7;
+}
+
 bool CPU::getFlag(uint8_t mask) const {
     return (P & mask) != 0;
 }

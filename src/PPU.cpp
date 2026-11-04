@@ -27,16 +27,23 @@ void PPU::reset() {
 
 void PPU::setMapper(Mapper* m, bool vertical) {
     mapper = m;
-    verticalMirroring = vertical;
+    mirror = vertical ? Mirror::Vertical : Mirror::Horizontal;
 }
 
 // Nametable region $2000–$3EFF → 2KB CIRAM (indices 0–0x7FF)
 uint16_t PPU::mirrorNametable(uint16_t addr) const {
     addr = (addr - 0x2000) & 0x0FFF; // 4KB nametable window
-    if (verticalMirroring) {
+    switch (mirror) {
+    case Mirror::Vertical:
         return addr & 0x7FF;
+    case Mirror::Horizontal:
+        return ((addr & 0x800) >> 1) | (addr & 0x3FF);
+    case Mirror::SingleLow:
+        return addr & 0x3FF;
+    case Mirror::SingleHigh:
+        return (addr & 0x3FF) | 0x400;
     }
-    return ((addr & 0x800) >> 1) | (addr & 0x3FF);
+    return addr & 0x7FF;
 }
 
 // $3F00/$3F04/$3F08/$3F0C mirror through $3F10/$3F14/$3F18/$3F1C
@@ -384,6 +391,12 @@ void PPU::tick() {
     // Pre-render vertical reload (cycles 280–304)
     if (sl == 261 && cyc >= 280 && cyc <= 304 && renderingEnabled()) {
         copyVerticalBits();
+    }
+
+    // MMC3-style scanline IRQ clock (approximates the PPU A12 rise:
+    // one clock per rendered scanline at dot 260)
+    if (mapper && cyc == 260 && (sl < 240 || sl == 261) && renderingEnabled()) {
+        mapper->scanlineTick();
     }
 
     // Advance dot / scanline
