@@ -99,16 +99,16 @@ void testPrgRamAndRomWrites() {
 
 // Unsupported mapper must be rejected, not crash
 void testUnsupportedMapper() {
-    // Build a minimal iNES with mapper 2 (UxROM) in the header
-    const char* path = "/tmp/nes_uxrom.nes";
+    // Build a minimal iNES with mapper 9 (MMC2) in the header — still unimplemented
+    const char* path = "/tmp/nes_mmc2.nes";
     FILE* f = fopen(path, "wb");
     assert(f);
     uint8_t header[16] = {};
     header[0] = 'N'; header[1] = 'E'; header[2] = 'S'; header[3] = 0x1A;
     header[4] = 2; // 32KB PRG
     header[5] = 1; // 8KB CHR
-    header[6] = 0x20; // mapper number bits 0–3 = 2
-    header[7] = 0x00; // mapper number bits 4–7 = 0 → mapper 2
+    header[6] = 0x90; // mapper number bits 0–3 = 9
+    header[7] = 0x00; // mapper number bits 4–7 = 0 → mapper 9
     fwrite(header, 1, 16, f);
     uint8_t zeros[16384 * 2 + 8192] = {};
     fwrite(zeros, 1, sizeof(zeros), f);
@@ -117,7 +117,7 @@ void testUnsupportedMapper() {
     std::string err;
     auto cart = Cartridge::load(path, &err);
     assert(cart);
-    assert(cart->mapperId() == 2);
+    assert(cart->mapperId() == 9);
 
     Bus bus;
     assert(!bus.insertCartridge(std::move(cart), &err));

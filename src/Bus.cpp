@@ -1,7 +1,10 @@
 #include "Bus.hpp"
 #include "Mapper0.hpp"
 #include "Mapper1.hpp"
+#include "Mapper2.hpp"
 #include "Mapper3.hpp"
+#include "MapperAxrom.hpp"
+#include "MapperCnrom.hpp"
 #include <iostream>
 
 Bus::Bus() {
@@ -27,8 +30,17 @@ bool Bus::insertCartridge(std::unique_ptr<Cartridge> cart, std::string* error) {
     case 1:
         newMapper = std::make_unique<Mapper1>(*cart);
         break;
+    case 2:
+        newMapper = std::make_unique<Mapper2>(*cart);
+        break;
+    case 3:
+        newMapper = std::make_unique<MapperCnrom>(*cart);
+        break;
     case 4:
         newMapper = std::make_unique<Mapper3>(*cart);
+        break;
+    case 7:
+        newMapper = std::make_unique<MapperAxrom>(*cart);
         break;
     default:
         if (error) {

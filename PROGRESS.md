@@ -4,6 +4,18 @@ This log records every step of development so anyone can resume and understand t
 
 ## Completed Milestones
 
+### Milestone 9: UxROM / CNROM / AxROM Mappers ✅
+- **Concept**: Three low-cost mapper families cover a large slice of the library. **UxROM (mapper 2)** splits PRG into 16KB banks: a write to `$8000–$FFFF` picks the bank shown at `$8000–$BFFF` while `$C000–$FFFF` is hardwired to the last bank (the fixed bank holds the reset/IRQ vectors) — CHR is almost always 8KB CHR **RAM**, and there is no PRG RAM. **CNROM (mapper 3)** leaves PRG exactly as NROM (16KB mirrored or 32KB linear) and only banks CHR: each write to `$8000–$FFFF` selects an 8KB CHR ROM bank covering both pattern tables. **AxROM (mapper 7)** swaps 32KB PRG blocks as a unit (so `$8000` and `$C000` always come from the same bank) and, uniquely, reprograms mirroring from the same write: bit 4 = 0 → single-screen low (nametable at `$2000`), bit 4 = 1 → single-screen high (nametable at `$2400`).
+- **Code**:
+  - `include/Mapper2.hpp` / `src/Mapper2.cpp` — UxROM: 16KB bank select with fixed last bank, 8KB CHR RAM, no PRG RAM.
+  - `include/MapperCnrom.hpp` / `src/MapperCnrom.cpp` — CNROM: NROM PRG mapping + 8KB CHR bank register (named `MapperCnrom` because `Mapper3` already means MMC3/mapper 4).
+  - `include/MapperAxrom.hpp` / `src/MapperAxrom.cpp` — AxROM: 32KB PRG switch + `bus->setMirror(SingleLow/SingleHigh)` from bit 4.
+  - `src/Bus.cpp` — `insertCartridge` now builds mappers 1, 2, 3, 4, 7.
+  - `tests/test_mappers.cpp` — 27 tests: bank switching/wrapping, fixed banks, CHR RAM, no-PRG-RAM, CNROM 16KB mirror, AxROM mirroring modes; PRG image filled with a configurable bank-index granularity.
+  - `tests/test_cartridge.cpp` — the unsupported-mapper fixture moved from mapper 2 (now implemented) to mapper 9 (MMC2, still unimplemented).
+- **Bugs caught by tests**: 5 failures in the AxROM group, all test-side — the fixture filled PRG with **16KB** bank indices, so `$C000` read `index+1` while AxROM exposes one **32KB** bank across both halves (and the 32KB-wide mirroring test used a single-bank cart where no bank switch could show). Fixed by a `prgFillBytes` parameter on the fixture builder, defaulting to 16384.
+- **Verified**: **198 assertions** pass (incl. nestest **8991/8991**); headless `./nes_emulator tests/fixtures/nestest.nes` → `Mapper 0, PRG 16KB, CHR 8KB` / `Reset -> PC = 0xC004`.
+
 ### Milestone 8: APU + MMC1/MMC3 Mappers ✅
 - **Concept**: The APU has 4 channel types — 2 pulse channels (duty-cycle waveform + hardware sweep), triangle (linear counter, no volume), noise (LFSR), and DMC (delta-modulated sample playback from CPU memory). A programmable frame counter clocks envelope/length/sweep units at 4-step (29830 CPU cycles, raises frame IRQ at 29829) or 5-step (37282, no IRQ) rates. `$4015` enables channels and reports status/IRQ flags; `$4017` selects frame mode. Output mixes to 44.1 kHz mono samples queued to SDL audio. **MMC1 (mapper 1)** writes a 5-bit shift register serially (LSB first, bit 7 resets) into control/CHR/PRG registers: PRG modes 0/1 switch 32KB at `$8000`, mode 2 fixes first bank + switches `$C000`, mode 3 switches `$8000` + fixes last; CHR is 4KB×2 or 8KB (R1 ignored); control bits 0–1 select one of 4 mirroring modes. **MMC3 (mapper 4)** uses `$8000`/`$8001` index/data pairs for 8KB PRG and 1KB/2KB CHR banking, `$A000` mirroring, and a scanline IRQ counter (`$C000` latch, `$C001` reload, `$E000`/`$E001` disable/enable) clocked once per rendered scanline — CPU reads of `$E000–$FFFF` acknowledge.
 - **Code**:
@@ -129,13 +141,14 @@ CMake builds two targets: `nes_emulator` (src/main.cpp) and `nes_tests` (tests +
 **Bug hit during build**: `size_t` required `#include <cstddef>` in `include/RAM.hpp` — C++ headers do not leak into each other.
 
 ## Active Step
-(None — between milestones. Milestone 8 (APU + MMC1/MMC3) landed; tests at 171 assertions.)
+(None — between milestones. Milestone 9 (UxROM/CNROM/AxROM) landed; tests at 198 assertions.)
 
 ## Next Steps
 - [x] Milestone 6: PPU rendering + SDL2 window.
 - [x] Milestone 7: Controller input.
 - [x] Milestone 8: APU + advanced mappers (MMC1/MMC3).
-- [ ] Milestone 9: candidates — more mappers (UxROM/CNROM/MMC2), blargg APU/PPU test ROMs, save states, gamepad config.
+- [x] Milestone 9: more mappers (UxROM/CNROM/AxROM).
+- [ ] Milestone 10: candidates — MMC2/MMC5 or GxROM (mapper 66), blargg APU/PPU test ROMs, save states, gamepad config.
 
 ## How to resume after a break
 1. Read this file (PROGRESS.md) — it is the source of truth for state.

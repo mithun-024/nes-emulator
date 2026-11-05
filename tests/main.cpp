@@ -10,6 +10,7 @@ void run_nestest_tests();
 void run_apu_tests();
 void run_mmc1_tests();
 void run_mmc3_tests();
+void run_mapper_bank_tests();
 
 int main() {
     run_bus_tests();
@@ -22,6 +23,7 @@ int main() {
     run_apu_tests();
     run_mmc1_tests();
     run_mmc3_tests();
+    run_mapper_bank_tests();
     std::cout << "\nAll tests passed successfully!" << std::endl;
     return 0;
 }
