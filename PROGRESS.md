@@ -4,6 +4,24 @@ This log records every step of development so anyone can resume and understand t
 
 ## Completed Milestones
 
+### Milestone 10: GxROM/MMC2 Mappers + blargg Hardware Test Suite ✅
+- **Concept**: **GxROM (mapper 66)** is the cheapest possible mapper — one register at `$8000–$FFFF` whose bits 4–5 pick a 32KB PRG bank and bits 0–1 an 8KB CHR bank. **MMC2 (mapper 9, PxROM)** is the opposite extreme: 8KB PRG banking (`$E000` selects `$8000–$BFFF`, `$C000–$FFFF` fixed to the last bank) plus four 4KB CHR banks chosen by two PPU *latches* — the PPU fetching tile `$FD`/`$FE` from a pattern table (`$x0FD8–$x0FDF` = plane 0, `$x0FE8–$x0FEF` likewise) loads latch 0/1 with that value, and each half of pattern memory then reads through the register programmed for that latch state (`$A000`/`$B000` for `$0000`, `$C000`/`$D000` for `$1000`); `$F000` sets mirroring. The **blargg test harness** runs 44 hardware-test ROMs through the normal `System` loop and reads the standard PRG-RAM status protocol (`$6000` = `$80` running → `0` pass, text report at `$6004`).
+- **Code**:
+  - `include/MapperGxrom.hpp` / `src/MapperGxrom.cpp` — mapper 66 PRG/CHR register; `include/MapperMmc2.hpp` / `src/MapperMmc2.cpp` — mapper 9 with `mutable` latches updated from `ppuRead()`.
+  - `src/Bus.cpp` — `insertCartridge` now builds mappers 1, 2, 3, 4, 7, 9, 66; unsupported-mapper fixture moved to mapper 5 (MMC5).
+  - `src/CPU.cpp` — **7 missing unofficial opcodes** found by `instr_test-v5`: AAC/ANC (`$0B/$2B`), ASR/ALR (`$4B`), ARR (`$6B`, C = bit 6, V = bit 6 xor bit 5), ATX/LXA (`$AB`), AXS/SBX (`$CB`, flags as CMP), SHY/SYA (`$9C`) and SHX/SXA (`$9E`) — the store-high pair stores `reg & (operand high + 1)` and, on a page crossing, collapses the store address's high byte to that same value (the classic bus-conflict corruption).
+  - `src/System.cpp` + `include/CPU.hpp` — **6502 I-flag interrupt delay**: `irqPollDelay` is set by CLI/SEI/PLP so the interrupt poll after them still sees the *pre-instruction* I flag (IRQ exactly one instruction after `CLI`, one IRQ just after `CLI SEI`, none after `CLI RTI`); RTI/BRK use the freshly loaded I.
+  - `tests/test_blargg.cpp` + `tests/fetch_blargg.sh` + `tests/blargg_baseline.txt` — harness with a known-failure baseline: the build fails only on a **regression** (failing ROM not in the baseline) or a **stale entry** (listed ROM now passes). ROMs are downloaded on demand and gitignored.
+  - `tests/test_mappers.cpp` — +11 tests for GxROM/MMC2 (27 → 28 mapper tests total incl. latch flips, hi-plane non-flip, wrap rules).
+- **Bugs caught by blargg's ROMs** (fixed this milestone):
+  1. CNROM mapped **no PRG RAM** at `$6000` — blargg's CNROM ROMs (`cpu_dummy_reads`, `ppu_read_buffer`) write their status there, so they could never report; PRG RAM added (dev carts rely on it even though real CNROM boards omit it).
+  2. MMC1 **CHR RAM writes ignored banking** — writes landed at the raw address while reads went through the bank registers; `chrOffset()` now shared by read and write.
+  3. IRQ serviced **immediately after `CLI`** instead of after the following instruction; then the naive fix broke `CLI SEI` — resolved with the `irqPollDelay` model above.
+  4. Unimplemented unofficial opcodes silently became 2-cycle NOPs that didn't consume their operand (would desync PC on any ROM using them).
+- **Baseline (25 known failures, all tracked in `tests/blargg_baseline.txt`)**: PPU vblank/NMI exact timing (8), dummy writes/reads (3), I/O-space execution + instruction timing (3), NMI-during-BRK (1), APU `$4017`/frame-IRQ/power-on state (7), PPU `$2007` buffer/open-bus/OAM stress (3).
+- **Excluded suites**: `cpu_reset/*` (needs a physical reset press mid-test), `blargg_nes_cpu_test5` + `cpu_dummy_reads` (older framework: screen-only output, no `$6000` protocol).
+- **Verified**: **220 unit assertions** pass (incl. nestest **8991/8991**); blargg run = 44 ROMs, 19 passing / 25 baseline-matching failures (~8 s); headless `./nes_emulator tests/fixtures/nestest.nes` → `Reset -> PC = 0xC004`.
+
 ### Milestone 9: UxROM / CNROM / AxROM Mappers ✅
 - **Concept**: Three low-cost mapper families cover a large slice of the library. **UxROM (mapper 2)** splits PRG into 16KB banks: a write to `$8000–$FFFF` picks the bank shown at `$8000–$BFFF` while `$C000–$FFFF` is hardwired to the last bank (the fixed bank holds the reset/IRQ vectors) — CHR is almost always 8KB CHR **RAM**, and there is no PRG RAM. **CNROM (mapper 3)** leaves PRG exactly as NROM (16KB mirrored or 32KB linear) and only banks CHR: each write to `$8000–$FFFF` selects an 8KB CHR ROM bank covering both pattern tables. **AxROM (mapper 7)** swaps 32KB PRG blocks as a unit (so `$8000` and `$C000` always come from the same bank) and, uniquely, reprograms mirroring from the same write: bit 4 = 0 → single-screen low (nametable at `$2000`), bit 4 = 1 → single-screen high (nametable at `$2400`).
 - **Code**:
@@ -141,14 +159,17 @@ CMake builds two targets: `nes_emulator` (src/main.cpp) and `nes_tests` (tests +
 **Bug hit during build**: `size_t` required `#include <cstddef>` in `include/RAM.hpp` — C++ headers do not leak into each other.
 
 ## Active Step
-(None — between milestones. Milestone 9 (UxROM/CNROM/AxROM) landed; tests at 198 assertions.)
+(None — between milestones. Milestone 10 (GxROM/MMC2 + blargg harness) landed; 220 unit assertions + 44 blargg ROMs gated by baseline.)
 
 ## Next Steps
 - [x] Milestone 6: PPU rendering + SDL2 window.
 - [x] Milestone 7: Controller input.
 - [x] Milestone 8: APU + advanced mappers (MMC1/MMC3).
 - [x] Milestone 9: more mappers (UxROM/CNROM/AxROM).
-- [ ] Milestone 10: candidates — MMC2/MMC5 or GxROM (mapper 66), blargg APU/PPU test ROMs, save states, gamepad config.
+- [x] Milestone 10: GxROM/MMC2 mappers + blargg hardware test suite.
+- [ ] Milestone 11: shrink the blargg baseline — highest value first: PPU vblank/NMI timing (8 ROMs), then dummy writes/reads (3), then APU reset/frame IRQ (7).
+- [ ] Milestone 12: save states.
+- [ ] Milestone 13: gamepad config / polish.
 
 ## How to resume after a break
 1. Read this file (PROGRESS.md) — it is the source of truth for state.
