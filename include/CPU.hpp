@@ -54,6 +54,11 @@ public:
     uint8_t SP = 0;
     uint8_t P = 0;
 
+    // Set by CLI/SEI/PLP for one instruction: the interrupt poll still sees
+    // the pre-instruction I flag (6502's one-instruction flag delay).
+    // Cleared at the start of every step(); consumed by System::step().
+    bool irqPollDelay = false;
+
     // Total CPU cycles since power-on (reset leaves this at 7, matching nestest)
     uint64_t total_cycles = 0;
 

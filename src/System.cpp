@@ -15,7 +15,14 @@ void System::tickPpu(int cpuCycles) {
 
 int System::step() {
     const uint64_t before = cpu.total_cycles;
+    const bool iSetBefore = cpu.getFlag(CPU::FLAG_I);
     cpu.step();
+    // Interrupt polling runs during the instruction's last cycle. CLI/SEI/PLP
+    // rewrite I too late for that poll, so it still sees the old value and
+    // the flag only affects interrupts from the next instruction onward.
+    // RTI/BRK load I earlier, so their new value is visible to the poll.
+    const bool irqAllowed =
+        cpu.irqPollDelay ? !iSetBefore : !cpu.getFlag(CPU::FLAG_I);
     int cycles = static_cast<int>(cpu.total_cycles - before);
 
     // OAM DMA ($4014) stalls the CPU while the PPU keeps running
@@ -29,7 +36,7 @@ int System::step() {
         tickPpu(7);
         bus.tickApu(7);
         cycles += 7;
-    } else if (bus.irqPending() && !cpu.getFlag(CPU::FLAG_I)) {
+    } else if (irqAllowed && bus.irqPending()) {
         // Level-triggered IRQ (APU frame/DMC or mapper); NMI has priority
         cpu.irq();
         tickPpu(7);

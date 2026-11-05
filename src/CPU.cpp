@@ -216,6 +216,7 @@ uint16_t CPU::addrInd() {
 
 void CPU::step() {
     page_crossed = false;
+    irqPollDelay = false;
     uint8_t opcode = read(PC++);
     int cyc = 0;
 
@@ -288,7 +289,7 @@ void CPU::step() {
     // Flag clears
     case 0x18: setFlag(FLAG_C, false); cyc = 2; break; // CLC
     case 0xD8: setFlag(FLAG_D, false); cyc = 2; break; // CLD
-    case 0x58: setFlag(FLAG_I, false); cyc = 2; break; // CLI
+    case 0x58: setFlag(FLAG_I, false); irqPollDelay = true; cyc = 2; break; // CLI
     case 0xB8: setFlag(FLAG_V, false); cyc = 2; break; // CLV
 
     // CMP
@@ -404,7 +405,11 @@ void CPU::step() {
 
     // PLA / PLP
     case 0x68: A = pop8(); setZN(A);   cyc = 4; break;
-    case 0x28: P = static_cast<uint8_t>((pop8() & ~FLAG_B) | FLAG_U); cyc = 4; break;
+    case 0x28: // PLP
+        P = static_cast<uint8_t>((pop8() & ~FLAG_B) | FLAG_U);
+        irqPollDelay = true;
+        cyc = 4;
+        break;
 
     // ROL
     case 0x2A: A = opROL(A);                 cyc = 2; break;
@@ -446,7 +451,7 @@ void CPU::step() {
     // Flag sets
     case 0x38: setFlag(FLAG_C, true); cyc = 2; break; // SEC
     case 0xF8: setFlag(FLAG_D, true); cyc = 2; break; // SED
-    case 0x78: setFlag(FLAG_I, true); cyc = 2; break; // SEI
+    case 0x78: setFlag(FLAG_I, true); irqPollDelay = true; cyc = 2; break; // SEI
 
     // STA
     case 0x85: write(addrZp(),  A);  cyc = 3; break;
@@ -511,6 +516,79 @@ void CPU::step() {
     case 0x97: write(addrZpY(), static_cast<uint8_t>(A & X));  cyc = 4; break;
     case 0x8F: write(addrAbs(), static_cast<uint8_t>(A & X));  cyc = 4; break;
     case 0x83: write(addrIndX(), static_cast<uint8_t>(A & X)); cyc = 6; break;
+
+    // AAC (ANC): A &= #n, then C = N
+    case 0x0B: case 0x2B:
+        A &= read(addrImm());
+        setZN(A);
+        setFlag(FLAG_C, (A & 0x80) != 0);
+        cyc = 2;
+        break;
+
+    // ASR (ALR): A = (A & #n) LSR 1
+    case 0x4B: {
+        const uint8_t v = static_cast<uint8_t>(A & read(addrImm()));
+        setFlag(FLAG_C, (v & 0x01) != 0);
+        A = static_cast<uint8_t>(v >> 1);
+        setZN(A);
+        cyc = 2;
+    } break;
+
+    // ARR: A &= #n, ROR through carry; C = bit 6, V = bit 6 xor bit 5
+    case 0x6B: {
+        const uint8_t v = static_cast<uint8_t>(A & read(addrImm()));
+        const bool oldCarry = getFlag(FLAG_C);
+        A = static_cast<uint8_t>((v >> 1) | (oldCarry ? 0x80 : 0));
+        setFlag(FLAG_C, (A & 0x40) != 0);
+        setFlag(FLAG_V, (((A >> 6) ^ (A >> 5)) & 1) != 0);
+        setZN(A);
+        cyc = 2;
+    } break;
+
+    // ATX (LXA): A = X = #n (magic-constant model: | $FF)
+    case 0xAB:
+        A = X = read(addrImm());
+        setZN(A);
+        cyc = 2;
+        break;
+
+    // AXS (SBX): X = (A & X) - #n, flags as if CMP
+    case 0xCB: {
+        const uint8_t imm = read(addrImm());
+        const uint8_t lhs = static_cast<uint8_t>(A & X);
+        X = static_cast<uint8_t>(lhs - imm);
+        setFlag(FLAG_C, lhs >= imm);
+        setZN(X);
+        cyc = 2;
+    } break;
+
+    // SHY (SYA) abs,X: value = Y & (operand high byte + 1).
+    // On a page crossing the store address's high byte collapses to that
+    // same value (bus conflict during the high-byte fix-up).
+    case 0x9C: {
+        const uint8_t lo = read(PC++);
+        const uint8_t hi = read(PC++);
+        const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
+        const uint16_t addr = static_cast<uint16_t>(base + X);
+        const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        const uint8_t v = static_cast<uint8_t>(Y) & static_cast<uint8_t>(hi + 1);
+        write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr,
+              v);
+        cyc = 5;
+    } break;
+
+    // SHX (SXA) abs,Y: same as SHY but stores X, indexed by Y
+    case 0x9E: {
+        const uint8_t lo = read(PC++);
+        const uint8_t hi = read(PC++);
+        const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
+        const uint16_t addr = static_cast<uint16_t>(base + Y);
+        const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        const uint8_t v = static_cast<uint8_t>(X) & static_cast<uint8_t>(hi + 1);
+        write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr,
+              v);
+        cyc = 5;
+    } break;
 
     // SLO: ASL memory, then ORA into A
     case 0x07: case 0x17: case 0x0F: case 0x1F: case 0x1B: case 0x03: case 0x13: {
