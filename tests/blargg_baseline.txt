@@ -1,0 +1,43 @@
+# blargg hardware test ROMs that currently FAIL (known accuracy gaps).
+#
+# tests/test_blargg.cpp fails the build if:
+#   - a ROM fails that is NOT listed here        (regression), or
+#   - a ROM listed here starts passing           (stale entry — trim it).
+# Shrinking this file is the point: fix an area, delete its lines, commit.
+
+# PPU: vblank/NMI exact timing, odd/even frame skip, NMI suppression
+ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes
+ppu_vbl_nmi/rom_singles/04-nmi_control.nes
+ppu_vbl_nmi/rom_singles/05-nmi_timing.nes
+ppu_vbl_nmi/rom_singles/06-suppression.nes
+ppu_vbl_nmi/rom_singles/07-nmi_on_timing.nes
+ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes
+ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes
+ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes
+
+# CPU: dummy writes (RMW double-write) and dummy reads are not modeled
+cpu_dummy_writes/cpu_dummy_writes_oam.nes
+cpu_dummy_writes/cpu_dummy_writes_ppumem.nes
+instr_misc/instr_misc.nes
+
+# CPU: cycle-level instruction timing and execution from I/O space
+cpu_exec_space/test_cpu_exec_space_apu.nes
+cpu_exec_space/test_cpu_exec_space_ppuio.nes
+instr_timing/instr_timing.nes
+
+# CPU: NMI interrupting BRK mid-instruction (per-instruction NMI service)
+cpu_interrupts_v2/cpu_interrupts.nes
+
+# APU: $4017 write timing, frame IRQ edge cases, power-on $4015 state
+apu_test/apu_test.nes
+apu_reset/4015_cleared.nes
+apu_reset/4017_timing.nes
+apu_reset/4017_written.nes
+apu_reset/irq_flag_cleared.nes
+apu_reset/len_ctrs_enabled.nes
+apu_reset/works_immediately.nes
+
+# PPU: $2007 read buffer details, open-bus decay, OAMADDR/OAM stress
+ppu_read_buffer/test_ppu_read_buffer.nes
+ppu_open_bus/ppu_open_bus.nes
+oam_stress/oam_stress.nes
