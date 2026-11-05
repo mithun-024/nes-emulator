@@ -92,28 +92,29 @@ void Mapper1::cpuWrite(uint16_t addr, uint8_t data) {
     }
 }
 
+size_t Mapper1::chrOffset(uint16_t addr) const {
+    if (control & 0x10) {
+        // 4KB mode: R0 at $0000, R1 at $1000
+        const uint8_t bank = (addr < 0x1000) ? chrBank0 : chrBank1;
+        return static_cast<size_t>(bank) * 4096 + (addr & 0x0FFF);
+    }
+    // 8KB mode: R0 covers $0000-$1FFF (R1 ignored, bit 0 of R0 ignored)
+    return static_cast<size_t>(chrBank0 & 0x1E) * 4096 + (addr & 0x1FFF);
+}
+
 uint8_t Mapper1::ppuRead(uint16_t addr) const {
     addr &= 0x1FFF;
     const auto& chr = cart.chrRom();
     const uint8_t* image = chr.empty() ? chrRam.data() : chr.data();
     const size_t size = chr.empty() ? chrRam.size() : chr.size();
     if (size == 0) return 0x00;
-
-    size_t offset;
-    if (control & 0x10) {
-        // 4KB mode: R0 at $0000, R1 at $1000
-        const uint8_t bank = (addr < 0x1000) ? chrBank0 : chrBank1;
-        offset = static_cast<size_t>(bank) * 4096 + (addr & 0x0FFF);
-    } else {
-        // 8KB mode: R0 covers $0000-$1FFF (R1 ignored, bit 0 of R0 ignored)
-        offset = static_cast<size_t>(chrBank0 & 0x1E) * 4096 + (addr & 0x1FFF);
-    }
-    return image[offset % size];
+    return image[chrOffset(addr) % size];
 }
 
 void Mapper1::ppuWrite(uint16_t addr, uint8_t data) {
     addr &= 0x1FFF;
-    if (cart.chrRom().empty()) {
-        chrRam[addr] = data;
+    if (cart.chrRom().empty() && !chrRam.empty()) {
+        // CHR RAM writes follow the same banking as reads
+        chrRam[chrOffset(addr) % chrRam.size()] = data;
     }
 }

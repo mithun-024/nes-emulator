@@ -22,6 +22,7 @@ public:
 private:
     void commitRegister(uint16_t addr, uint8_t value);
     void applyMirroring();
+    size_t chrOffset(uint16_t addr) const; // shared by CHR read/write
 
     std::vector<uint8_t> prgRam;
     std::vector<uint8_t> chrRam; // used only when the cart has no CHR ROM

@@ -17,10 +17,11 @@ static void expect(bool cond, const char* name) {
 }
 
 // Builds an iNES image: PRG filled with its bank index at the given
-// granularity, CHR filled with its 8KB bank index. chrUnits == 0 → CHR RAM.
+// granularity, CHR likewise. chrUnits == 0 → CHR RAM.
 static std::unique_ptr<Cartridge> makeCart(int mapper, int prgUnits,
                                            int chrUnits,
-                                           size_t prgFillBytes = 16384) {
+                                           size_t prgFillBytes = 16384,
+                                           size_t chrFillBytes = 8192) {
     std::vector<uint8_t> img(16 + prgUnits * 16384 + chrUnits * 8192, 0);
     img[0] = 'N'; img[1] = 'E'; img[2] = 'S'; img[3] = 0x1A;
     img[4] = static_cast<uint8_t>(prgUnits);
@@ -32,7 +33,7 @@ static std::unique_ptr<Cartridge> makeCart(int mapper, int prgUnits,
         img[16 + i] = static_cast<uint8_t>(i / prgFillBytes);
     }
     for (size_t i = 0; i < static_cast<size_t>(chrUnits) * 8192; i++) {
-        img[16 + prgUnits * 16384 + i] = static_cast<uint8_t>(i / 8192);
+        img[16 + prgUnits * 16384 + i] = static_cast<uint8_t>(i / chrFillBytes);
     }
 
     static int counter = 0;
@@ -170,6 +171,95 @@ static void testAxromMirroring() {
            "AxROM: all nametables alias $2400");
 }
 
+// ---------------------------------------------------------------- GxROM
+
+static void testGxromBankSwitch() {
+    Bus bus;
+    // 128KB PRG (4 × 32KB), 32KB CHR (4 × 8KB), mapper 66
+    if (!insert(bus, makeCart(66, 8, 4, 32768, 8192))) return;
+    PPU& ppu = bus.getPPU();
+
+    bus.cpuWrite(0x8000, 0x00);
+    expect(bus.cpuRead(0x8000) == 0 && bus.cpuRead(0xC000) == 0,
+           "GxROM: bank 0 fills the 32KB window");
+    expect(ppu.ppuRead(0x0000) == 0, "GxROM: CHR bank 0");
+
+    bus.cpuWrite(0x8000, 0x23); // PRG bank 2, CHR bank 3
+    expect(bus.cpuRead(0x8000) == 2 && bus.cpuRead(0xC000) == 2,
+           "GxROM: bits 4–5 switch 32KB PRG");
+    expect(ppu.ppuRead(0x0000) == 3 && ppu.ppuRead(0x1FFF) == 3,
+           "GxROM: bits 0–1 switch 8KB CHR");
+
+    bus.cpuWrite(0x8000, 0xF0); // only bits 4–5 are wired → bank (0xF & 3) = 3
+    expect(bus.cpuRead(0x8000) == 3, "GxROM: PRG bank uses only bits 4–5");
+}
+
+// ---------------------------------------------------------------- MMC2
+
+static void testMmc2PrgBanking() {
+    Bus bus;
+    // 512KB PRG (64 × 8KB), 128KB CHR (32 × 4KB), mapper 9
+    if (!insert(bus, makeCart(9, 32, 16, 8192, 4096))) return;
+
+    expect(bus.cpuRead(0x8000) == 0, "MMC2: $8000 starts in bank 0");
+    expect(bus.cpuRead(0xC000) == 63, "MMC2: last 8KB bank fixed at $C000");
+
+    bus.cpuWrite(0xE000, 5);
+    expect(bus.cpuRead(0x8000) == 5, "MMC2: $E000 selects $8000 bank");
+    expect(bus.cpuRead(0x9FFF) == 5, "MMC2: bank covers $9FFF");
+    expect(bus.cpuRead(0xC000) == 63, "MMC2: fixed bank unaffected");
+
+    bus.cpuWrite(0xE000, 0xFF); // out of range → wraps
+    expect(bus.cpuRead(0x8000) == 0xFF % 64, "MMC2: PRG bank index wraps");
+}
+
+static void testMmc2ChrLatches() {
+    Bus bus;
+    if (!insert(bus, makeCart(9, 4, 16, 8192, 4096))) return;
+    PPU& ppu = bus.getPPU();
+
+    // Latches power up in the $FD state: $0000 ← $A000, $1000 ← $C000
+    bus.cpuWrite(0xA000, 2);
+    bus.cpuWrite(0xC000, 4);
+    expect(ppu.ppuRead(0x0000) == 2, "MMC2: latch0=$FD → $A000 bank");
+    expect(ppu.ppuRead(0x1000) == 4, "MMC2: latch1=$FD → $C000 bank");
+
+    // Reading tile $FE ($0FE8–$0FEF) flips latch 0
+    bus.cpuWrite(0xB000, 6);
+    ppu.ppuRead(0x0FE8);
+    expect(ppu.ppuRead(0x0000) == 6, "MMC2: latch0=$FE → $B000 bank");
+    expect(ppu.ppuRead(0x1000) == 4, "MMC2: latch0 flip leaves $1000 alone");
+
+    // Reading tile $FD ($0FD8–$0FDF) flips latch 0 back
+    ppu.ppuRead(0x0FD8);
+    expect(ppu.ppuRead(0x0000) == 2, "MMC2: latch0 back to $FD bank");
+
+    // Latch 1: $1000 half
+    bus.cpuWrite(0xD000, 9);
+    ppu.ppuRead(0x1FE8);
+    expect(ppu.ppuRead(0x1000) == 9, "MMC2: latch1=$FE → $D000 bank");
+    expect(ppu.ppuRead(0x0000) == 2, "MMC2: latch1 flip leaves $0000 alone");
+    ppu.ppuRead(0x1FD8);
+    expect(ppu.ppuRead(0x1000) == 4, "MMC2: latch1 back to $FD bank");
+
+    // High-plane fetches ($0FE0–$0FE7) must not flip the latch
+    ppu.ppuRead(0x0FE0);
+    expect(ppu.ppuRead(0x0000) == 2, "MMC2: $0FE0 hi-plane read keeps latch");
+}
+
+static void testMmc2Mirroring() {
+    Bus bus;
+    if (!insert(bus, makeCart(9, 4, 4, 8192, 4096))) return;
+    PPU& ppu = bus.getPPU();
+
+    bus.cpuWrite(0xF000, 0);
+    expect(ppu.mirrorMode() == PPU::Mirror::Vertical,
+           "MMC2: $F000 bit0=0 → vertical");
+    bus.cpuWrite(0xF000, 1);
+    expect(ppu.mirrorMode() == PPU::Mirror::Horizontal,
+           "MMC2: $F000 bit0=1 → horizontal");
+}
+
 void run_mapper_bank_tests() {
     std::printf("\nRunning UxROM/CNROM/AxROM (mappers 2/3/7) tests...\n");
     testUxromBankSwitch();
@@ -179,6 +269,11 @@ void run_mapper_bank_tests() {
     testCnrom16kPrgMirror();
     testAxromPrgSwitch();
     testAxromMirroring();
+    std::printf("Running GxROM/MMC2 (mappers 66/9) tests...\n");
+    testGxromBankSwitch();
+    testMmc2PrgBanking();
+    testMmc2ChrLatches();
+    testMmc2Mirroring();
     if (failures == 0) {
         std::printf("Mapper bank tests passed!\n");
     } else {

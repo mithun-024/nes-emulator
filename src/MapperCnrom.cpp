@@ -1,11 +1,15 @@
 #include "MapperCnrom.hpp"
 #include "Cartridge.hpp"
 
-MapperCnrom::MapperCnrom(Cartridge& cart) : Mapper(cart) {}
+MapperCnrom::MapperCnrom(Cartridge& cart) : Mapper(cart) {
+    prgRam.resize(cart.prgRamSize(), 0);
+}
 
 uint8_t MapperCnrom::cpuRead(uint16_t addr) const {
     if (addr < 0x6000) return 0x00; // expansion area
-    if (addr < 0x8000) return 0x00; // no PRG RAM on CNROM
+    if (addr < 0x8000) {
+        return prgRam.empty() ? 0x00 : prgRam[addr - 0x6000];
+    }
 
     const auto& prg = cart.prgRom();
     // Same mapping as NROM: 16KB mirrored at both halves, 32KB linear
@@ -16,6 +20,10 @@ uint8_t MapperCnrom::cpuRead(uint16_t addr) const {
 }
 
 void MapperCnrom::cpuWrite(uint16_t addr, uint8_t data) {
+    if (addr >= 0x6000 && addr < 0x8000) {
+        if (!prgRam.empty()) prgRam[addr - 0x6000] = data;
+        return;
+    }
     if (addr < 0x8000) return;
     const auto& chr = cart.chrRom();
     const size_t banks = chr.empty() ? 0 : chr.size() / 8192;
