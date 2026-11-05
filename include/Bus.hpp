@@ -39,6 +39,29 @@ public:
     void tickApu(int cycles) { apu.tick(cycles); }
     APU& getAPU() { return apu; }
 
+    // --- Cycle-level device sync ---
+    // Every CPU bus access advances the PPU (3 dots) and APU (1 cycle) by one
+    // CPU cycle *before* the access, so register reads/writes see device state
+    // at the correct point inside the instruction. Internal (non-bus) cycles are
+    // caught up by syncDevicesTo() at the end of each instruction.
+    void advanceCycle() {
+        ++devCycle;
+        ppu.tick();
+        ppu.tick();
+        ppu.tick();
+        apu.tick(1);
+    }
+    void syncDevicesTo(uint64_t cycle) {
+        if (cycle <= devCycle) return;
+        const uint64_t d = cycle - devCycle;
+        devCycle = cycle;
+        for (uint64_t i = 0; i < d * 3; ++i) ppu.tick();
+        apu.tick(static_cast<int>(d));
+    }
+    // Rebase the watermark (CPU reset); device state itself is untouched.
+    void setDeviceCycle(uint64_t cycle) { devCycle = cycle; }
+    uint64_t deviceCycle() const { return devCycle; }
+
     // Level-triggered interrupt line: APU frame/DMC IRQ or mapper IRQ
     bool irqPending() const;
 
@@ -67,6 +90,7 @@ private:
     std::unique_ptr<Cartridge> cartridge;
     std::unique_ptr<Mapper> mapper;
     int dmaStall = 0;
+    uint64_t devCycle = 0; // CPU cycles devices have advanced through
 
     // Fallback buffer for 0x4020–0xFFFF when no cartridge is inserted.
     // Lets unit tests plant a reset vector without loading a ROM.

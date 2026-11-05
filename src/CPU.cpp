@@ -7,9 +7,11 @@ void CPU::reset() {
     A = X = Y = 0;
     SP = 0xFD;               // NES convention: stack starts at top of page 1 minus 3
     P = FLAG_U | FLAG_I;     // 0x24: unused bit always 1, IRQs masked during reset
+    bus->setDeviceCycle(0);  // rebaseline device sync before the vector reads
     // The cartridge supplies a 16-bit little-endian start address at 0xFFFC/0xFFFD
     PC = read16(0xFFFC);
     total_cycles = 7;        // hardware reset sequence takes 7 cycles (nestest log starts at CYC:7)
+    bus->syncDevicesTo(total_cycles);
 }
 
 void CPU::nmi() {
@@ -20,6 +22,7 @@ void CPU::nmi() {
     setFlag(FLAG_I, true);
     PC = read16(0xFFFA);
     total_cycles += 7;
+    bus->syncDevicesTo(total_cycles);
 }
 
 void CPU::irq() {
@@ -29,6 +32,7 @@ void CPU::irq() {
     setFlag(FLAG_I, true);
     PC = read16(0xFFFE);
     total_cycles += 7;
+    bus->syncDevicesTo(total_cycles);
 }
 
 bool CPU::getFlag(uint8_t mask) const {
@@ -73,10 +77,12 @@ uint16_t CPU::pop16() {
 }
 
 uint8_t CPU::read(uint16_t addr) const {
+    bus->advanceCycle(); // the bus access consumes one CPU cycle
     return bus->cpuRead(addr);
 }
 
 void CPU::write(uint16_t addr, uint8_t data) {
+    bus->advanceCycle(); // the bus access consumes one CPU cycle
     bus->cpuWrite(addr, data);
 }
 
@@ -278,7 +284,7 @@ void CPU::step() {
 
     // BRK
     case 0x00:
-        PC++; // signature byte
+        read(PC++); // signature byte (a real bus read on hardware)
         push16(PC);
         push8(P | FLAG_B | FLAG_U);
         setFlag(FLAG_I, true);
@@ -714,4 +720,6 @@ void CPU::step() {
     }
 
     total_cycles += static_cast<uint64_t>(cyc);
+    // Catch devices up through this instruction's internal (non-bus) cycles
+    bus->syncDevicesTo(total_cycles);
 }

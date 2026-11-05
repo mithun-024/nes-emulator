@@ -28,7 +28,8 @@ public:
     uint64_t runCycles(uint64_t cycles);
 
 private:
-    void tickPpu(int cpuCycles);
+    // End-of-instruction NMI: a consumed edge latch waits for service
+    bool nmiPending = false;
 };
 
 #endif // SYSTEM_HPP

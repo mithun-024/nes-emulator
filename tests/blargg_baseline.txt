@@ -5,14 +5,7 @@
 #   - a ROM listed here starts passing           (stale entry — trim it).
 # Shrinking this file is the point: fix an area, delete its lines, commit.
 
-# PPU: vblank/NMI exact timing, odd/even frame skip, NMI suppression
-ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes
-ppu_vbl_nmi/rom_singles/04-nmi_control.nes
-ppu_vbl_nmi/rom_singles/05-nmi_timing.nes
-ppu_vbl_nmi/rom_singles/06-suppression.nes
-ppu_vbl_nmi/rom_singles/07-nmi_on_timing.nes
-ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes
-ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes
+# PPU: vblank/NMI exact timing, odd/even frame skip (01–09 now pass)
 ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes
 
 # CPU: dummy writes (RMW double-write) and dummy reads are not modeled

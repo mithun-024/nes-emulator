@@ -4,13 +4,7 @@ System::System() : cpu(bus) {}
 
 void System::reset() {
     cpu.reset();
-}
-
-void System::tickPpu(int cpuCycles) {
-    PPU& ppu = bus.getPPU();
-    for (int i = 0; i < cpuCycles * 3; ++i) {
-        ppu.tick();
-    }
+    nmiPending = false;
 }
 
 int System::step() {
@@ -23,24 +17,36 @@ int System::step() {
     // RTI/BRK load I earlier, so their new value is visible to the poll.
     const bool irqAllowed =
         cpu.irqPollDelay ? !iSetBefore : !cpu.getFlag(CPU::FLAG_I);
+
+    // OAM DMA ($4014) stalls the CPU while the devices keep time
+    const int dma = bus.takeDmaStall();
+    if (dma > 0) {
+        cpu.total_cycles += static_cast<uint64_t>(dma);
+        bus.syncDevicesTo(cpu.total_cycles);
+    }
+
+    // End-of-instruction NMI poll: consume the PPU's edge latch (visible
+    // 2 dots after any line rise). The sample sees PPU-side rises made
+    // during this instruction, but NOT the effect of this instruction's own
+    // $2000 write — those are applied right after the poll (one-instruction
+    // delay, blargg 04-nmi_control #11: immediate NMI occurs after the NEXT
+    // instruction).
+    PPU& ppu = bus.getPPU();
+    if (ppu.takeNmiEdge()) {
+        nmiPending = true;
+    }
+    ppu.applyDeferredNmi();
+
     int cycles = static_cast<int>(cpu.total_cycles - before);
 
-    // OAM DMA ($4014) stalls the CPU while the PPU keeps running
-    cycles += bus.takeDmaStall();
-    tickPpu(cycles);
-    bus.tickApu(cycles);
-
-    // Service a pending NMI between instructions (7 more cycles, PPU keeps time)
-    if (bus.getPPU().takeNmi()) {
+    // Service a pending NMI between instructions (7 more cycles, devices keep time)
+    if (nmiPending) {
+        nmiPending = false;
         cpu.nmi();
-        tickPpu(7);
-        bus.tickApu(7);
         cycles += 7;
     } else if (irqAllowed && bus.irqPending()) {
         // Level-triggered IRQ (APU frame/DMC or mapper); NMI has priority
         cpu.irq();
-        tickPpu(7);
-        bus.tickApu(7);
         cycles += 7;
     }
     return cycles;

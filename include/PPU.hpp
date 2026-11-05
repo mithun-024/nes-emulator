@@ -36,7 +36,18 @@ public:
     // Frame output: 256×240 ARGB8888, set at the start of vblank
     const uint32_t* framebuffer() const { return fb.data(); }
     bool takeFrameComplete();
-    bool takeNmi();
+
+    // --- NMI line model ---
+    // The PPU drives the CPU's NMI input while (vblank flag && NMI enabled).
+    // The CPU edge-detects the line: ANY rise latches an internal flag (even a
+    // pulse shorter than one instruction — blargg 07-nmi_on_timing), and the
+    // latch becomes visible to end-of-instruction polls 2 PPU dots after the
+    // rise (the 6502 samples NMI during φ2 of its final cycle — blargg
+    // 05-nmi_timing). takeNmiEdge() returns true once per latch.
+    // $2000 write effects are deferred one instruction via applyDeferredNmi()
+    // (blargg 04-nmi_control: immediate NMI occurs after the NEXT instruction).
+    bool takeNmiEdge();
+    void applyDeferredNmi();
 
     // --- Test / debug hooks (no read side effects) ---
     uint8_t statusRaw() const { return status; }
@@ -55,6 +66,7 @@ private:
     uint16_t mirrorNametable(uint16_t addr) const;
     static uint8_t paletteIndex(uint16_t addr);
     static uint32_t nesColor(uint8_t index);
+    void setNmiLine(bool high); // rise records the edge-latch timestamp
 
     bool renderingEnabled() const { return (mask & 0x18) != 0; }
     void renderScanline(int y);
@@ -90,7 +102,18 @@ private:
     int sl = 0;  // scanline 0–261 (0–239 visible, 240 post, 241–260 vblank, 261 pre)
     int cyc = 0; // dot 0–340
     bool frameDone = false;
-    bool nmiEvent = false;
+
+    // NMI line state (see takeNmiEdge() above)
+    bool nmiLineState = false;     // current level of the CPU NMI input
+    bool nmiEdgeArmed = false;     // a rise happened, latch not yet consumed
+    uint64_t nmiRiseDot = 0;       // dotCount when the last rise occurred
+    uint64_t dotCount = 0;         // absolute PPU dots ticked (monotonic)
+    bool nmiWriteDeferred = false; // a $2000 write awaits applyDeferredNmi()
+    bool vblSetSuppressed = false; // $2002 read landed on the vblank-set dot
+
+    // Odd/even frame: every other frame with rendering enabled skips the last
+    // idle dot of the pre-render scanline (frame is 1 PPU clock short).
+    bool frameOdd = false;
 };
 
 #endif // PPU_HPP

@@ -22,7 +22,12 @@ void PPU::reset() {
     sl = 0;
     cyc = 0;
     frameDone = false;
-    nmiEvent = false;
+    nmiLineState = false;
+    nmiEdgeArmed = false;
+    nmiRiseDot = 0;
+    nmiWriteDeferred = false;
+    vblSetSuppressed = false;
+    frameOdd = false;
 }
 
 void PPU::setMapper(Mapper* m, bool vertical) {
@@ -97,8 +102,14 @@ void PPU::ppuWrite(uint16_t addr, uint8_t data) {
 uint8_t PPU::regRead(uint8_t reg) {
     switch (reg & 7) {
     case 2: {
+        // A read on the exact dot the vblank flag would set suppresses the
+        // flag (and therefore the NMI) for this frame — blargg 02/06.
+        if (sl == 241 && cyc == 1) {
+            vblSetSuppressed = true;
+        }
         uint8_t value = static_cast<uint8_t>((status & 0xE0) | (openBus & 0x1F));
         status &= ~0x80;
+        setNmiLine(false); // clearing vblank drops the NMI line (fall only)
         w = false;
         openBus = value;
         return value;
@@ -130,13 +141,12 @@ void PPU::regWrite(uint8_t reg, uint8_t data) {
     openBus = data;
     switch (reg & 7) {
     case 0: {
-        const uint8_t old = ctrl;
         ctrl = data;
         t = static_cast<uint16_t>((t & ~0x0C00) | ((data & 0x03) << 10));
-        // Enabling NMI while vblank flag is already set fires NMI immediately
-        if ((data & 0x80) && !(old & 0x80) && (status & 0x80)) {
-            nmiEvent = true;
-        }
+        // $2000 write effects on the NMI line are deferred: System applies
+        // them after this instruction's interrupt poll (blargg 04-nmi_control
+        // #11 — immediate NMI occurs after the NEXT instruction).
+        nmiWriteDeferred = true;
         break;
     }
     case 1:
@@ -356,18 +366,25 @@ void PPU::renderScanline(int y) {
 }
 
 void PPU::tick() {
-    // VBlank flag + NMI at scanline 241, dot 1
+    ++dotCount; // absolute time base for the NMI edge-latch (2-dot visibility)
+
+    // VBlank flag + NMI at scanline 241, dot 1 (skipped if a $2002 read
+    // landed on this exact dot — vblSetSuppressed)
     if (sl == 241 && cyc == 1) {
-        status |= 0x80;
-        if (ctrl & 0x80) {
-            nmiEvent = true;
+        if (!vblSetSuppressed) {
+            status |= 0x80;
+            if (ctrl & 0x80) {
+                setNmiLine(true);
+            }
         }
+        vblSetSuppressed = false;
         frameDone = true;
     }
 
     // Pre-render: clear flags at scanline 261, dot 1
     if (sl == 261 && cyc == 1) {
         status &= ~0xE0; // vblank, sprite0, overflow
+        setNmiLine(false);
     }
 
     // Visible scanlines: render line and update scroll at end-of-line dots
@@ -400,12 +417,21 @@ void PPU::tick() {
     }
 
     // Advance dot / scanline
-    cyc++;
-    if (cyc > 340) {
+    if (sl == 261 && frameOdd && renderingEnabled() && cyc == 339) {
+        // Odd frame with rendering: skip the final idle dot of pre-render —
+        // jump straight from (339,261) to (0,0)
         cyc = 0;
-        sl++;
-        if (sl > 261) {
-            sl = 0;
+        sl = 0;
+        frameOdd = !frameOdd;
+    } else {
+        cyc++;
+        if (cyc > 340) {
+            cyc = 0;
+            sl++;
+            if (sl > 261) {
+                sl = 0;
+                frameOdd = !frameOdd;
+            }
         }
     }
 }
@@ -416,8 +442,34 @@ bool PPU::takeFrameComplete() {
     return done;
 }
 
-bool PPU::takeNmi() {
-    const bool n = nmiEvent;
-    nmiEvent = false;
-    return n;
+void PPU::applyDeferredNmi() {
+    if (!nmiWriteDeferred) return;
+    nmiWriteDeferred = false;
+    setNmiLine((status & 0x80) && (ctrl & 0x80));
+}
+
+void PPU::setNmiLine(bool high) {
+    if (high && !nmiLineState) {
+        // Any rise latches, but it must persist to mature into an NMI.
+        if (!nmiEdgeArmed) {
+            nmiEdgeArmed = true;
+            nmiRiseDot = dotCount;
+        }
+    } else if (!high && nmiLineState) {
+        // A rise that drops before maturing (< 2 dots) is a glitch pulse and
+        // cancels the armed latch (blargg 06-suppression / 07 / 08).
+        if (nmiEdgeArmed && dotCount < nmiRiseDot + 2) {
+            nmiEdgeArmed = false;
+        }
+    }
+    nmiLineState = high;
+}
+
+bool PPU::takeNmiEdge() {
+    // Latch becomes visible to CPU polls 2 dots after the rise (φ2 sampling)
+    if (nmiEdgeArmed && dotCount >= nmiRiseDot + 2) {
+        nmiEdgeArmed = false;
+        return true;
+    }
+    return false;
 }
