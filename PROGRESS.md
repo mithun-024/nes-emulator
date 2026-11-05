@@ -159,7 +159,31 @@ CMake builds two targets: `nes_emulator` (src/main.cpp) and `nes_tests` (tests +
 **Bug hit during build**: `size_t` required `#include <cstddef>` in `include/RAM.hpp` — C++ headers do not leak into each other.
 
 ## Active Step
-(None — between milestones. Milestone 10 (GxROM/MMC2 + blargg harness) landed; 220 unit assertions + 44 blargg ROMs gated by baseline.)
+**Milestone 11 in progress: shrinking blargg baseline (25 → 18 failing ROMs)**
+- **Completed so far**:
+  - Cycle-level device sync (`bus->advanceCycle()` per CPU bus read/write, `bus->syncDevicesTo()` for internal cycle catch-up).
+  - PPU NMI edge-latching model with 2-dot maturation / glitch-pulse rejection and deferred `$2000` write effects.
+  - VBL flag & NMI suppression on `$2002` reads around scanline 241 dot 1.
+  - Pre-render scanline (261) odd/even 1-dot skip at dot 339 when rendering enabled.
+  - Baseline reduced by 7 ROMs (now passing): `02-vbl_set_time`, `04-nmi_control`, `05-nmi_timing`, `06-suppression`, `07-nmi_on_timing`, `08-nmi_off_timing`, `09-even_odd_frames`.
+  - 220 unit tests + nestest 8991/8991 + 44 blargg ROMs pass cleanly against updated baseline.
+
+- **Immediate Todos when resuming (Tomorrow)**:
+  - [ ] **PPU**: `ppu_vbl_nmi/10-even_odd_timing.nes` (fine-tune dot 339 skip vs `$2001` BG enable delay).
+  - [ ] **CPU dummy writes & reads** (`cpu_dummy_writes_oam`, `cpu_dummy_writes_ppumem`, `instr_misc`):
+    - Implement RMW double-write (write original value back, then write modified value) for ASL, LSR, ROL, ROR, INC, DEC, DCP, ISC, SLO, RLA, SRE, RRA.
+    - Implement indexed dummy reads for ABS,X / ABS,Y / (ZP),Y (page-crossing for reads; always for writes and RMW).
+    - Implement RTS dummy read of the byte following opcode (`read(PC);`).
+  - [ ] **CPU unofficial opcodes & timing** (`instr_timing`):
+    - Implement `$8B` (XAA / ANE imm, 2 cyc), `$93` (SHA (zp),Y, 6 cyc), `$9B` (TAS abs,Y, 5 cyc), `$9F` (SHA abs,Y, 5 cyc), `$BB` (LAS abs,Y, 4+ cyc).
+  - [ ] **CPU / Bus open bus** (`cpu_exec_space_apu`, `cpu_exec_space_ppuio`):
+    - Model open bus on `$4000–$401F` / `$4018–$40FF` so execution from write-only ports returns the last driven data bus byte (e.g. `$40` = RTI).
+  - [ ] **CPU interrupts & APU** (`cpu_interrupts_v2`, `apu_test`, `apu_reset/*`):
+    - NMI interrupting BRK / B flag preservation.
+    - APU `$4017` write jitter and frame IRQ timing; length counter reset behavior.
+  - [ ] **PPU stress & buffer** (`ppu_read_buffer`, `ppu_open_bus`, `oam_stress`):
+    - STA abs,Y dummy read to `$2007`.
+    - PPU open bus ~600ms decay to zero.
 
 ## Next Steps
 - [x] Milestone 6: PPU rendering + SDL2 window.
@@ -167,11 +191,12 @@ CMake builds two targets: `nes_emulator` (src/main.cpp) and `nes_tests` (tests +
 - [x] Milestone 8: APU + advanced mappers (MMC1/MMC3).
 - [x] Milestone 9: more mappers (UxROM/CNROM/AxROM).
 - [x] Milestone 10: GxROM/MMC2 mappers + blargg hardware test suite.
-- [ ] Milestone 11: shrink the blargg baseline — highest value first: PPU vblank/NMI timing (8 ROMs), then dummy writes/reads (3), then APU reset/frame IRQ (7).
+- [ ] Milestone 11: shrink the blargg baseline (in-flight: 7/25 fixed; 18 remaining).
 - [ ] Milestone 12: save states.
 - [ ] Milestone 13: gamepad config / polish.
 
 ## How to resume after a break
 1. Read this file (PROGRESS.md) — it is the source of truth for state.
 2. `git log --oneline` — see what landed.
-3. Build & test: `cd build && cmake .. && make && ./nes_tests`
+3. Build & test: `cmake --build build && ./build/nes_tests`
+4. Pick up from the Milestone 11 checklist above.
