@@ -16,7 +16,6 @@ instr_misc/instr_misc.nes
 # CPU: cycle-level instruction timing and execution from I/O space
 cpu_exec_space/test_cpu_exec_space_apu.nes
 cpu_exec_space/test_cpu_exec_space_ppuio.nes
-instr_timing/instr_timing.nes
 
 # CPU: NMI interrupting BRK mid-instruction (per-instruction NMI service)
 cpu_interrupts_v2/cpu_interrupts.nes

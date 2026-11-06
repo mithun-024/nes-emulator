@@ -551,6 +551,13 @@ void CPU::step() {
         cyc = 2;
     } break;
 
+    // XAA (ANE): A = (A | 0xEE) & X & #n
+    case 0x8B:
+        A = static_cast<uint8_t>((A | 0xEE) & X & read(addrImm()));
+        setZN(A);
+        cyc = 2;
+        break;
+
     // ATX (LXA): A = X = #n (magic-constant model: | $FF)
     case 0xAB:
         A = X = read(addrImm());
@@ -594,6 +601,53 @@ void CPU::step() {
         write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr,
               v);
         cyc = 5;
+    } break;
+
+    // SHA (AHX / AXA) (zp),Y: value = A & X & (hi + 1)
+    case 0x93: {
+        const uint8_t zp = read(PC++);
+        const uint8_t lo = read(zp);
+        const uint8_t hi = read(static_cast<uint8_t>(zp + 1));
+        const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
+        const uint16_t addr = static_cast<uint16_t>(base + Y);
+        const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        const uint8_t v = static_cast<uint8_t>(A & X) & static_cast<uint8_t>(hi + 1);
+        write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr, v);
+        cyc = 6;
+    } break;
+
+    // TAS (SHS / XAS) abs,Y: SP = A & X; value = SP & (hi + 1)
+    case 0x9B: {
+        SP = static_cast<uint8_t>(A & X);
+        const uint8_t lo = read(PC++);
+        const uint8_t hi = read(PC++);
+        const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
+        const uint16_t addr = static_cast<uint16_t>(base + Y);
+        const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        const uint8_t v = static_cast<uint8_t>(SP & static_cast<uint8_t>(hi + 1));
+        write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr, v);
+        cyc = 5;
+    } break;
+
+    // SHA (AHX / AXA) abs,Y: value = A & X & (hi + 1)
+    case 0x9F: {
+        const uint8_t lo = read(PC++);
+        const uint8_t hi = read(PC++);
+        const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
+        const uint16_t addr = static_cast<uint16_t>(base + Y);
+        const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        const uint8_t v = static_cast<uint8_t>(A & X) & static_cast<uint8_t>(hi + 1);
+        write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr, v);
+        cyc = 5;
+    } break;
+
+    // LAS (LAR) abs,Y: A = X = SP = (memory & SP)
+    case 0xBB: {
+        const uint16_t a = addrAbsY();
+        const uint8_t v = static_cast<uint8_t>(read(a) & SP);
+        A = X = SP = v;
+        setZN(A);
+        cyc = 4 + page_crossed;
     } break;
 
     // SLO: ASL memory, then ORA into A
