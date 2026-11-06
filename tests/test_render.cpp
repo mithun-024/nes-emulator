@@ -36,7 +36,7 @@ static std::unique_ptr<Cartridge> makeCart(const std::vector<uint8_t>& prg,
     }
 
     static int counter = 0;
-    std::string path = "/tmp/opencode/m6_render_" + std::to_string(counter++) + ".nes";
+    std::string path = "/tmp/m6_render_" + std::to_string(counter++) + ".nes";
     std::ofstream f(path, std::ios::binary);
     f.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));

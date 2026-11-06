@@ -29,7 +29,7 @@ static std::unique_ptr<Cartridge> makeNromCart() {
         bytes[16 + i] = static_cast<uint8_t>(i & 0xFF);
     }
 
-    std::string path = "/tmp/opencode/m5_nrom.nes";
+    std::string path = "/tmp/m5_nrom.nes";
     std::ofstream f(path, std::ios::binary);
     f.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
     f.close();
@@ -139,7 +139,7 @@ static void testNametableMirroring() {
         bytes[0] = 'N'; bytes[1] = 'E'; bytes[2] = 'S'; bytes[3] = 0x1A;
         bytes[4] = 1; bytes[5] = 1;
         bytes[6] = 0x01; // vertical mirroring
-        std::string path = "/tmp/opencode/m5_vert.nes";
+        std::string path = "/tmp/m5_vert.nes";
         std::ofstream f(path, std::ios::binary);
         f.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
         f.close();
