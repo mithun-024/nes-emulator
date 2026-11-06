@@ -90,6 +90,9 @@ private:
     uint16_t addrAbsY();
     uint16_t addrIndX();  // (zp,X)
     uint16_t addrIndY();  // (zp),Y
+    uint16_t addrAbsX_Write(); // abs,X for stores and RMW (always dummy reads uncorrected)
+    uint16_t addrAbsY_Write(); // abs,Y for stores and RMW (always dummy reads uncorrected)
+    uint16_t addrIndY_Write(); // (zp),Y for stores and RMW (always dummy reads uncorrected)
     uint16_t addrInd();   // JMP ($xxxx) with the 6502 page-wrap bug
 };
 

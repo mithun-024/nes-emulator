@@ -68,26 +68,38 @@ bool Bus::insertCartridge(std::unique_ptr<Cartridge> cart, std::string* error) {
 uint8_t Bus::cpuRead(uint16_t addr) const {
     // 0x0000 - 0x1FFF: 2KB Internal RAM (mirrored 4 times)
     if (addr <= 0x1FFF) {
-        return ram.read(addr);
+        cpuOpenBus = ram.read(addr);
+        return cpuOpenBus;
     }
     // 0x2000 - 0x3FFF: PPU Registers (8 registers mirrored every 8 bytes)
     else if (addr >= 0x2000 && addr <= 0x3FFF) {
-        return const_cast<PPU&>(ppu).regRead(static_cast<uint8_t>(addr & 7));
+        cpuOpenBus = const_cast<PPU&>(ppu).regRead(static_cast<uint8_t>(addr & 7));
+        return cpuOpenBus;
     }
     // 0x4000 - 0x4017: APU & I/O Registers
     else if (addr >= 0x4000 && addr <= 0x4017) {
         // APU status (also acknowledges the frame IRQ)
         if (addr == 0x4015) {
-            return const_cast<APU&>(apu).readStatus();
+            cpuOpenBus = const_cast<APU&>(apu).readStatus();
+            return cpuOpenBus;
         }
-        // Controller ports shift out one button bit per read
+        // Controller ports shift out one button bit on D0; D5–D7 reflect open bus
         if (addr == 0x4016) {
-            return const_cast<Controller&>(controllers[0]).read();
+            const uint8_t bit = static_cast<uint8_t>(const_cast<Controller&>(controllers[0]).read() & 1);
+            cpuOpenBus = static_cast<uint8_t>((cpuOpenBus & 0xE0) | bit);
+            return cpuOpenBus;
         }
         if (addr == 0x4017) {
-            return const_cast<Controller&>(controllers[1]).read();
+            const uint8_t bit = static_cast<uint8_t>(const_cast<Controller&>(controllers[1]).read() & 1);
+            cpuOpenBus = static_cast<uint8_t>((cpuOpenBus & 0xE0) | bit);
+            return cpuOpenBus;
         }
-        return 0x00;
+        // Write-only APU registers ($4000–$4014) return open bus
+        return cpuOpenBus;
+    }
+    // 0x4018 - 0x401F: Unallocated APU/IO test mode space
+    else if (addr >= 0x4018 && addr <= 0x401F) {
+        return cpuOpenBus;
     }
     // 0x4020 - 0xFFFF: Cartridge Space
     else if (addr >= 0x4020) {
@@ -96,16 +108,19 @@ uint8_t Bus::cpuRead(uint16_t addr) const {
             if (addr >= 0xE000) {
                 const_cast<Mapper&>(*mapper).irqAcknowledge();
             }
-            return mapper->cpuRead(addr);
+            cpuOpenBus = mapper->cpuRead(addr);
+            return cpuOpenBus;
         }
         // No cartridge: flat buffer so tests can plant vectors
-        return cartSpace[addr];
+        cpuOpenBus = cartSpace[addr];
+        return cpuOpenBus;
     }
 
-    return 0x00;
+    return cpuOpenBus;
 }
 
 void Bus::cpuWrite(uint16_t addr, uint8_t data) {
+    cpuOpenBus = data;
     // 0x0000 - 0x1FFF: 2KB Internal RAM
     if (addr <= 0x1FFF) {
         ram.write(addr, data);

@@ -179,6 +179,9 @@ uint16_t CPU::addrAbsX() {
     PC += 2;
     uint16_t addr = static_cast<uint16_t>(base + X);
     page_crossed = (base & 0xFF00) != (addr & 0xFF00);
+    if (page_crossed) {
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0x00FF)));
+    }
     return addr;
 }
 
@@ -187,6 +190,9 @@ uint16_t CPU::addrAbsY() {
     PC += 2;
     uint16_t addr = static_cast<uint16_t>(base + Y);
     page_crossed = (base & 0xFF00) != (addr & 0xFF00);
+    if (page_crossed) {
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0x00FF)));
+    }
     return addr;
 }
 
@@ -206,6 +212,35 @@ uint16_t CPU::addrIndY() {
     uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
     uint16_t addr = static_cast<uint16_t>(base + Y);
     page_crossed = (base & 0xFF00) != (addr & 0xFF00);
+    if (page_crossed) {
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0x00FF)));
+    }
+    return addr;
+}
+
+uint16_t CPU::addrAbsX_Write() {
+    uint16_t base = read16(PC);
+    PC += 2;
+    uint16_t addr = static_cast<uint16_t>(base + X);
+    read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0x00FF)));
+    return addr;
+}
+
+uint16_t CPU::addrAbsY_Write() {
+    uint16_t base = read16(PC);
+    PC += 2;
+    uint16_t addr = static_cast<uint16_t>(base + Y);
+    read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0x00FF)));
+    return addr;
+}
+
+uint16_t CPU::addrIndY_Write() {
+    uint8_t zp = read(PC++);
+    uint8_t lo = read(zp);
+    uint8_t hi = read(static_cast<uint8_t>(zp + 1));
+    uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
+    uint16_t addr = static_cast<uint16_t>(base + Y);
+    read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0x00FF)));
     return addr;
 }
 
@@ -249,10 +284,10 @@ void CPU::step() {
 
     // ASL
     case 0x0A: A = opASL(A);                  cyc = 2; break;
-    case 0x06: { uint16_t a = addrZp();  write(a, opASL(read(a))); cyc = 5; } break;
-    case 0x16: { uint16_t a = addrZpX(); write(a, opASL(read(a))); cyc = 6; } break;
-    case 0x0E: { uint16_t a = addrAbs(); write(a, opASL(read(a))); cyc = 6; } break;
-    case 0x1E: { uint16_t a = addrAbsX(); write(a, opASL(read(a))); cyc = 7; } break;
+    case 0x06: { uint16_t a = addrZp();         uint8_t v = read(a); write(a, v); write(a, opASL(v)); cyc = 5; } break;
+    case 0x16: { uint16_t a = addrZpX();        uint8_t v = read(a); write(a, v); write(a, opASL(v)); cyc = 6; } break;
+    case 0x0E: { uint16_t a = addrAbs();        uint8_t v = read(a); write(a, v); write(a, opASL(v)); cyc = 6; } break;
+    case 0x1E: { uint16_t a = addrAbsX_Write(); uint8_t v = read(a); write(a, v); write(a, opASL(v)); cyc = 7; } break;
 
     // Branches (cycle: 2 +1 taken +1 page cross)
     case 0x90: case 0xB0: case 0xF0: case 0x30:
@@ -319,10 +354,10 @@ void CPU::step() {
     case 0xCC: opCMP(Y, read(addrAbs()));  cyc = 4; break;
 
     // DEC
-    case 0xC6: { uint16_t a = addrZp();  uint8_t v = static_cast<uint8_t>(read(a) - 1); write(a, v); setZN(v); cyc = 5; } break;
-    case 0xD6: { uint16_t a = addrZpX(); uint8_t v = static_cast<uint8_t>(read(a) - 1); write(a, v); setZN(v); cyc = 6; } break;
-    case 0xCE: { uint16_t a = addrAbs(); uint8_t v = static_cast<uint8_t>(read(a) - 1); write(a, v); setZN(v); cyc = 6; } break;
-    case 0xDE: { uint16_t a = addrAbsX(); uint8_t v = static_cast<uint8_t>(read(a) - 1); write(a, v); setZN(v); cyc = 7; } break;
+    case 0xC6: { uint16_t a = addrZp();         uint8_t v = read(a); write(a, v); v--; write(a, v); setZN(v); cyc = 5; } break;
+    case 0xD6: { uint16_t a = addrZpX();        uint8_t v = read(a); write(a, v); v--; write(a, v); setZN(v); cyc = 6; } break;
+    case 0xCE: { uint16_t a = addrAbs();        uint8_t v = read(a); write(a, v); v--; write(a, v); setZN(v); cyc = 6; } break;
+    case 0xDE: { uint16_t a = addrAbsX_Write(); uint8_t v = read(a); write(a, v); v--; write(a, v); setZN(v); cyc = 7; } break;
 
     // DEX / DEY
     case 0xCA: X--; setZN(X); cyc = 2; break;
@@ -339,10 +374,10 @@ void CPU::step() {
     case 0x51: A ^= read(addrIndY());         setZN(A); cyc = 5 + page_crossed; break;
 
     // INC
-    case 0xE6: { uint16_t a = addrZp();  uint8_t v = static_cast<uint8_t>(read(a) + 1); write(a, v); setZN(v); cyc = 5; } break;
-    case 0xF6: { uint16_t a = addrZpX(); uint8_t v = static_cast<uint8_t>(read(a) + 1); write(a, v); setZN(v); cyc = 6; } break;
-    case 0xEE: { uint16_t a = addrAbs(); uint8_t v = static_cast<uint8_t>(read(a) + 1); write(a, v); setZN(v); cyc = 6; } break;
-    case 0xFE: { uint16_t a = addrAbsX(); uint8_t v = static_cast<uint8_t>(read(a) + 1); write(a, v); setZN(v); cyc = 7; } break;
+    case 0xE6: { uint16_t a = addrZp();         uint8_t v = read(a); write(a, v); v++; write(a, v); setZN(v); cyc = 5; } break;
+    case 0xF6: { uint16_t a = addrZpX();        uint8_t v = read(a); write(a, v); v++; write(a, v); setZN(v); cyc = 6; } break;
+    case 0xEE: { uint16_t a = addrAbs();        uint8_t v = read(a); write(a, v); v++; write(a, v); setZN(v); cyc = 6; } break;
+    case 0xFE: { uint16_t a = addrAbsX_Write(); uint8_t v = read(a); write(a, v); v++; write(a, v); setZN(v); cyc = 7; } break;
 
     // INX / INY
     case 0xE8: X++; setZN(X); cyc = 2; break;
@@ -387,10 +422,10 @@ void CPU::step() {
 
     // LSR
     case 0x4A: A = opLSR(A);                 cyc = 2; break;
-    case 0x46: { uint16_t a = addrZp();  write(a, opLSR(read(a))); cyc = 5; } break;
-    case 0x56: { uint16_t a = addrZpX(); write(a, opLSR(read(a))); cyc = 6; } break;
-    case 0x4E: { uint16_t a = addrAbs(); write(a, opLSR(read(a))); cyc = 6; } break;
-    case 0x5E: { uint16_t a = addrAbsX(); write(a, opLSR(read(a))); cyc = 7; } break;
+    case 0x46: { uint16_t a = addrZp();         uint8_t v = read(a); write(a, v); write(a, opLSR(v)); cyc = 5; } break;
+    case 0x56: { uint16_t a = addrZpX();        uint8_t v = read(a); write(a, v); write(a, opLSR(v)); cyc = 6; } break;
+    case 0x4E: { uint16_t a = addrAbs();        uint8_t v = read(a); write(a, v); write(a, opLSR(v)); cyc = 6; } break;
+    case 0x5E: { uint16_t a = addrAbsX_Write(); uint8_t v = read(a); write(a, v); write(a, opLSR(v)); cyc = 7; } break;
 
     // NOP
     case 0xEA: cyc = 2; break;
@@ -419,20 +454,21 @@ void CPU::step() {
 
     // ROL
     case 0x2A: A = opROL(A);                 cyc = 2; break;
-    case 0x26: { uint16_t a = addrZp();  write(a, opROL(read(a))); cyc = 5; } break;
-    case 0x36: { uint16_t a = addrZpX(); write(a, opROL(read(a))); cyc = 6; } break;
-    case 0x2E: { uint16_t a = addrAbs(); write(a, opROL(read(a))); cyc = 6; } break;
-    case 0x3E: { uint16_t a = addrAbsX(); write(a, opROL(read(a))); cyc = 7; } break;
+    case 0x26: { uint16_t a = addrZp();         uint8_t v = read(a); write(a, v); write(a, opROL(v)); cyc = 5; } break;
+    case 0x36: { uint16_t a = addrZpX();        uint8_t v = read(a); write(a, v); write(a, opROL(v)); cyc = 6; } break;
+    case 0x2E: { uint16_t a = addrAbs();        uint8_t v = read(a); write(a, v); write(a, opROL(v)); cyc = 6; } break;
+    case 0x3E: { uint16_t a = addrAbsX_Write(); uint8_t v = read(a); write(a, v); write(a, opROL(v)); cyc = 7; } break;
 
     // ROR
     case 0x6A: A = opROR(A);                 cyc = 2; break;
-    case 0x66: { uint16_t a = addrZp();  write(a, opROR(read(a))); cyc = 5; } break;
-    case 0x76: { uint16_t a = addrZpX(); write(a, opROR(read(a))); cyc = 6; } break;
-    case 0x6E: { uint16_t a = addrAbs(); write(a, opROR(read(a))); cyc = 6; } break;
-    case 0x7E: { uint16_t a = addrAbsX(); write(a, opROR(read(a))); cyc = 7; } break;
+    case 0x66: { uint16_t a = addrZp();         uint8_t v = read(a); write(a, v); write(a, opROR(v)); cyc = 5; } break;
+    case 0x76: { uint16_t a = addrZpX();        uint8_t v = read(a); write(a, v); write(a, opROR(v)); cyc = 6; } break;
+    case 0x6E: { uint16_t a = addrAbs();        uint8_t v = read(a); write(a, v); write(a, opROR(v)); cyc = 6; } break;
+    case 0x7E: { uint16_t a = addrAbsX_Write(); uint8_t v = read(a); write(a, v); write(a, opROR(v)); cyc = 7; } break;
 
     // RTI
     case 0x40:
+        read(PC); // dummy fetch of next opcode
         P = static_cast<uint8_t>((pop8() & ~FLAG_B) | FLAG_U);
         PC = pop16();
         cyc = 6;
@@ -440,6 +476,7 @@ void CPU::step() {
 
     // RTS
     case 0x60:
+        read(PC); // dummy fetch of next instruction byte
         PC = static_cast<uint16_t>(pop16() + 1);
         cyc = 6;
         break;
@@ -460,13 +497,13 @@ void CPU::step() {
     case 0x78: setFlag(FLAG_I, true); irqPollDelay = true; cyc = 2; break; // SEI
 
     // STA
-    case 0x85: write(addrZp(),  A);  cyc = 3; break;
-    case 0x95: write(addrZpX(), A);  cyc = 4; break;
-    case 0x8D: write(addrAbs(), A);  cyc = 4; break;
-    case 0x9D: write(addrAbsX(), A); cyc = 5; break;
-    case 0x99: write(addrAbsY(), A); cyc = 5; break;
-    case 0x81: write(addrIndX(), A); cyc = 6; break;
-    case 0x91: write(addrIndY(), A); cyc = 6; break;
+    case 0x85: write(addrZp(),         A); cyc = 3; break;
+    case 0x95: write(addrZpX(),        A); cyc = 4; break;
+    case 0x8D: write(addrAbs(),        A); cyc = 4; break;
+    case 0x9D: write(addrAbsX_Write(), A); cyc = 5; break;
+    case 0x99: write(addrAbsY_Write(), A); cyc = 5; break;
+    case 0x81: write(addrIndX(),        A); cyc = 6; break;
+    case 0x91: write(addrIndY_Write(), A); cyc = 6; break;
 
     // STX
     case 0x86: write(addrZp(),  X); cyc = 3; break;
@@ -584,6 +621,7 @@ void CPU::step() {
         const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
         const uint16_t addr = static_cast<uint16_t>(base + X);
         const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0xFF)));
         const uint8_t v = static_cast<uint8_t>(Y) & static_cast<uint8_t>(hi + 1);
         write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr,
               v);
@@ -597,6 +635,7 @@ void CPU::step() {
         const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
         const uint16_t addr = static_cast<uint16_t>(base + Y);
         const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0xFF)));
         const uint8_t v = static_cast<uint8_t>(X) & static_cast<uint8_t>(hi + 1);
         write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr,
               v);
@@ -611,6 +650,7 @@ void CPU::step() {
         const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
         const uint16_t addr = static_cast<uint16_t>(base + Y);
         const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0xFF)));
         const uint8_t v = static_cast<uint8_t>(A & X) & static_cast<uint8_t>(hi + 1);
         write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr, v);
         cyc = 6;
@@ -624,6 +664,7 @@ void CPU::step() {
         const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
         const uint16_t addr = static_cast<uint16_t>(base + Y);
         const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0xFF)));
         const uint8_t v = static_cast<uint8_t>(SP & static_cast<uint8_t>(hi + 1));
         write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr, v);
         cyc = 5;
@@ -636,6 +677,7 @@ void CPU::step() {
         const uint16_t base = static_cast<uint16_t>((hi << 8) | lo);
         const uint16_t addr = static_cast<uint16_t>(base + Y);
         const bool crossed = (base & 0xFF00) != (addr & 0xFF00);
+        read(static_cast<uint16_t>((base & 0xFF00) | (addr & 0xFF)));
         const uint8_t v = static_cast<uint8_t>(A & X) & static_cast<uint8_t>(hi + 1);
         write(crossed ? static_cast<uint16_t>((v << 8) | (addr & 0xFF)) : addr, v);
         cyc = 5;
@@ -655,15 +697,17 @@ void CPU::step() {
         uint16_t a;
         int base;
         switch (opcode) {
-        case 0x07: a = addrZp();  base = 5; break;
-        case 0x17: a = addrZpX(); base = 6; break;
-        case 0x0F: a = addrAbs(); base = 6; break;
-        case 0x1F: a = addrAbsX(); base = 7; break;
-        case 0x1B: a = addrAbsY(); base = 7; break;
-        case 0x03: a = addrIndX(); base = 8; break;
-        default:   a = addrIndY(); base = 8; break;
+        case 0x07: a = addrZp();          base = 5; break;
+        case 0x17: a = addrZpX();         base = 6; break;
+        case 0x0F: a = addrAbs();         base = 6; break;
+        case 0x1F: a = addrAbsX_Write();  base = 7; break;
+        case 0x1B: a = addrAbsY_Write();  base = 7; break;
+        case 0x03: a = addrIndX();        base = 8; break;
+        default:   a = addrIndY_Write();  base = 8; break;
         }
-        uint8_t v = opASL(read(a));
+        uint8_t orig = read(a);
+        write(a, orig);
+        uint8_t v = opASL(orig);
         write(a, v);
         A |= v;
         setZN(A);
@@ -675,15 +719,17 @@ void CPU::step() {
         uint16_t a;
         int base;
         switch (opcode) {
-        case 0x27: a = addrZp();  base = 5; break;
-        case 0x37: a = addrZpX(); base = 6; break;
-        case 0x2F: a = addrAbs(); base = 6; break;
-        case 0x3F: a = addrAbsX(); base = 7; break;
-        case 0x3B: a = addrAbsY(); base = 7; break;
-        case 0x23: a = addrIndX(); base = 8; break;
-        default:   a = addrIndY(); base = 8; break;
+        case 0x27: a = addrZp();          base = 5; break;
+        case 0x37: a = addrZpX();         base = 6; break;
+        case 0x2F: a = addrAbs();         base = 6; break;
+        case 0x3F: a = addrAbsX_Write();  base = 7; break;
+        case 0x3B: a = addrAbsY_Write();  base = 7; break;
+        case 0x23: a = addrIndX();        base = 8; break;
+        default:   a = addrIndY_Write();  base = 8; break;
         }
-        uint8_t v = opROL(read(a));
+        uint8_t orig = read(a);
+        write(a, orig);
+        uint8_t v = opROL(orig);
         write(a, v);
         A &= v;
         setZN(A);
@@ -695,15 +741,17 @@ void CPU::step() {
         uint16_t a;
         int base;
         switch (opcode) {
-        case 0x47: a = addrZp();  base = 5; break;
-        case 0x57: a = addrZpX(); base = 6; break;
-        case 0x4F: a = addrAbs(); base = 6; break;
-        case 0x5F: a = addrAbsX(); base = 7; break;
-        case 0x5B: a = addrAbsY(); base = 7; break;
-        case 0x43: a = addrIndX(); base = 8; break;
-        default:   a = addrIndY(); base = 8; break;
+        case 0x47: a = addrZp();          base = 5; break;
+        case 0x57: a = addrZpX();         base = 6; break;
+        case 0x4F: a = addrAbs();         base = 6; break;
+        case 0x5F: a = addrAbsX_Write();  base = 7; break;
+        case 0x5B: a = addrAbsY_Write();  base = 7; break;
+        case 0x43: a = addrIndX();        base = 8; break;
+        default:   a = addrIndY_Write();  base = 8; break;
         }
-        uint8_t v = opLSR(read(a));
+        uint8_t orig = read(a);
+        write(a, orig);
+        uint8_t v = opLSR(orig);
         write(a, v);
         A ^= v;
         setZN(A);
@@ -715,15 +763,17 @@ void CPU::step() {
         uint16_t a;
         int base;
         switch (opcode) {
-        case 0x67: a = addrZp();  base = 5; break;
-        case 0x77: a = addrZpX(); base = 6; break;
-        case 0x6F: a = addrAbs(); base = 6; break;
-        case 0x7F: a = addrAbsX(); base = 7; break;
-        case 0x7B: a = addrAbsY(); base = 7; break;
-        case 0x63: a = addrIndX(); base = 8; break;
-        default:   a = addrIndY(); base = 8; break;
+        case 0x67: a = addrZp();          base = 5; break;
+        case 0x77: a = addrZpX();         base = 6; break;
+        case 0x6F: a = addrAbs();         base = 6; break;
+        case 0x7F: a = addrAbsX_Write();  base = 7; break;
+        case 0x7B: a = addrAbsY_Write();  base = 7; break;
+        case 0x63: a = addrIndX();        base = 8; break;
+        default:   a = addrIndY_Write();  base = 8; break;
         }
-        uint8_t v = opROR(read(a));
+        uint8_t orig = read(a);
+        write(a, orig);
+        uint8_t v = opROR(orig);
         write(a, v);
         opADC(v);
         cyc = base;
@@ -734,15 +784,17 @@ void CPU::step() {
         uint16_t a;
         int base;
         switch (opcode) {
-        case 0xC7: a = addrZp();  base = 5; break;
-        case 0xD7: a = addrZpX(); base = 6; break;
-        case 0xCF: a = addrAbs(); base = 6; break;
-        case 0xDF: a = addrAbsX(); base = 7; break;
-        case 0xDB: a = addrAbsY(); base = 7; break;
-        case 0xC3: a = addrIndX(); base = 8; break;
-        default:   a = addrIndY(); base = 8; break;
+        case 0xC7: a = addrZp();          base = 5; break;
+        case 0xD7: a = addrZpX();         base = 6; break;
+        case 0xCF: a = addrAbs();         base = 6; break;
+        case 0xDF: a = addrAbsX_Write();  base = 7; break;
+        case 0xDB: a = addrAbsY_Write();  base = 7; break;
+        case 0xC3: a = addrIndX();        base = 8; break;
+        default:   a = addrIndY_Write();  base = 8; break;
         }
-        uint8_t v = static_cast<uint8_t>(read(a) - 1);
+        uint8_t orig = read(a);
+        write(a, orig);
+        uint8_t v = static_cast<uint8_t>(orig - 1);
         write(a, v);
         opCMP(A, v);
         cyc = base;
@@ -753,15 +805,17 @@ void CPU::step() {
         uint16_t a;
         int base;
         switch (opcode) {
-        case 0xE7: a = addrZp();  base = 5; break;
-        case 0xF7: a = addrZpX(); base = 6; break;
-        case 0xEF: a = addrAbs(); base = 6; break;
-        case 0xFF: a = addrAbsX(); base = 7; break;
-        case 0xFB: a = addrAbsY(); base = 7; break;
-        case 0xE3: a = addrIndX(); base = 8; break;
-        default:   a = addrIndY(); base = 8; break;
+        case 0xE7: a = addrZp();          base = 5; break;
+        case 0xF7: a = addrZpX();         base = 6; break;
+        case 0xEF: a = addrAbs();         base = 6; break;
+        case 0xFF: a = addrAbsX_Write();  base = 7; break;
+        case 0xFB: a = addrAbsY_Write();  base = 7; break;
+        case 0xE3: a = addrIndX();        base = 8; break;
+        default:   a = addrIndY_Write();  base = 8; break;
         }
-        uint8_t v = static_cast<uint8_t>(read(a) + 1);
+        uint8_t orig = read(a);
+        write(a, orig);
+        uint8_t v = static_cast<uint8_t>(orig + 1);
         write(a, v);
         opSBC(v);
         cyc = base;

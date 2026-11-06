@@ -81,6 +81,9 @@ public:
         return s;
     }
 
+    // CPU data bus open bus value
+    uint8_t openBus() const { return cpuOpenBus; }
+
 private:
     RAM ram;
     PPU ppu;
@@ -91,6 +94,7 @@ private:
     std::unique_ptr<Mapper> mapper;
     int dmaStall = 0;
     uint64_t devCycle = 0; // CPU cycles devices have advanced through
+    mutable uint8_t cpuOpenBus = 0;
 
     // Fallback buffer for 0x4020–0xFFFF when no cartridge is inserted.
     // Lets unit tests plant a reset vector without loading a ROM.

@@ -1,5 +1,6 @@
 #include "Mapper0.hpp"
 #include "Cartridge.hpp"
+#include "Bus.hpp"
 
 Mapper0::Mapper0(Cartridge& cart) : Mapper(cart) {
     prgRam.resize(cart.prgRamSize(), 0);
@@ -9,9 +10,9 @@ Mapper0::Mapper0(Cartridge& cart) : Mapper(cart) {
 }
 
 uint8_t Mapper0::cpuRead(uint16_t addr) const {
-    // 0x4020–0x5FFF: expansion area — open bus (return 0 for now)
+    // 0x4020–0x5FFF: expansion area — open bus
     if (addr < 0x6000) {
-        return 0x00;
+        return bus ? bus->openBus() : 0x00;
     }
     // 0x6000–0x7FFF: PRG RAM
     if (addr < 0x8000) {

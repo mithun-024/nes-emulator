@@ -8,14 +8,9 @@
 # PPU: vblank/NMI exact timing, odd/even frame skip (01–09 now pass)
 ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes
 
-# CPU: dummy writes (RMW double-write) and dummy reads are not modeled
-cpu_dummy_writes/cpu_dummy_writes_oam.nes
-cpu_dummy_writes/cpu_dummy_writes_ppumem.nes
-instr_misc/instr_misc.nes
+# CPU: dummy writes (RMW double-write) and dummy reads are now passing
 
-# CPU: cycle-level instruction timing and execution from I/O space
-cpu_exec_space/test_cpu_exec_space_apu.nes
-cpu_exec_space/test_cpu_exec_space_ppuio.nes
+# CPU: execution from I/O space and dummy fetches now pass
 
 # CPU: NMI interrupting BRK mid-instruction (per-instruction NMI service)
 cpu_interrupts_v2/cpu_interrupts.nes
@@ -29,7 +24,6 @@ apu_reset/irq_flag_cleared.nes
 apu_reset/len_ctrs_enabled.nes
 apu_reset/works_immediately.nes
 
-# PPU: $2007 read buffer details, open-bus decay, OAMADDR/OAM stress
-ppu_read_buffer/test_ppu_read_buffer.nes
+# PPU: open-bus decay, OAMADDR/OAM stress
 ppu_open_bus/ppu_open_bus.nes
 oam_stress/oam_stress.nes
