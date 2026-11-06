@@ -97,6 +97,10 @@ private:
 
     uint8_t readBuffer = 0; // $2007 read buffer
     uint8_t openBus = 0;    // last value on the PPU data bus
+    std::array<uint64_t, 8> decayDot{}; // dot timestamp when each bit was last refreshed
+
+    uint8_t getOpenBus() const;
+    void refreshOpenBus(uint8_t val, uint8_t mask = 0xFF);
 
     // Timing
     int sl = 0;  // scanline 0–261 (0–239 visible, 240 post, 241–260 vblank, 261 pre)

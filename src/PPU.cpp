@@ -99,6 +99,31 @@ void PPU::ppuWrite(uint16_t addr, uint8_t data) {
     palette[paletteIndex(addr)] = data;
 }
 
+uint8_t PPU::getOpenBus() const {
+    uint8_t res = 0;
+    // 600 ms decay in PPU dots (approx 3,221,591 dots)
+    constexpr uint64_t kDecayDots = 3200000;
+    for (int i = 0; i < 8; ++i) {
+        if ((openBus & (1 << i)) && (dotCount - decayDot[i] < kDecayDots)) {
+            res |= static_cast<uint8_t>(1 << i);
+        }
+    }
+    return res;
+}
+
+void PPU::refreshOpenBus(uint8_t val, uint8_t mask) {
+    for (int i = 0; i < 8; ++i) {
+        if (mask & (1 << i)) {
+            if (val & (1 << i)) {
+                openBus |= static_cast<uint8_t>(1 << i);
+            } else {
+                openBus &= static_cast<uint8_t>(~(1 << i));
+            }
+            decayDot[i] = dotCount;
+        }
+    }
+}
+
 uint8_t PPU::regRead(uint8_t reg) {
     switch (reg & 7) {
     case 2: {
@@ -107,38 +132,44 @@ uint8_t PPU::regRead(uint8_t reg) {
         if (sl == 241 && cyc == 1) {
             vblSetSuppressed = true;
         }
-        uint8_t value = static_cast<uint8_t>((status & 0xE0) | (openBus & 0x1F));
+        uint8_t ob = getOpenBus();
+        uint8_t value = static_cast<uint8_t>((status & 0xE0) | (ob & 0x1F));
         status &= ~0x80;
         setNmiLine(false); // clearing vblank drops the NMI line (fall only)
         w = false;
-        openBus = value;
+        refreshOpenBus(value, 0xE0); // only bits 7..5 refresh decay register
         return value;
     }
     case 4: {
         uint8_t value = oam[oamAddr];
-        openBus = value;
+        if ((oamAddr & 3) == 2) {
+            value &= 0xE3; // bits 2, 3, 4 of sprite attribute byte are always 0
+        }
+        refreshOpenBus(value, 0xFF);
         return value;
     }
     case 7: {
         uint8_t value;
         if ((v & 0x3FFF) >= 0x3F00) {
-            value = palette[paletteIndex(v)];
+            uint8_t ob = getOpenBus();
+            value = static_cast<uint8_t>((palette[paletteIndex(v)] & 0x3F) | (ob & 0xC0));
             readBuffer = ppuRead(v & 0x2FFF);
+            refreshOpenBus(value, 0x3F); // only bits 0..5 refresh decay register
         } else {
             value = readBuffer;
             readBuffer = ppuRead(v);
+            refreshOpenBus(value, 0xFF);
         }
         v = static_cast<uint16_t>(v + ((ctrl & 0x04) ? 32 : 1));
-        openBus = value;
         return value;
     }
     default:
-        return openBus;
+        return getOpenBus();
     }
 }
 
 void PPU::regWrite(uint8_t reg, uint8_t data) {
-    openBus = data;
+    refreshOpenBus(data, 0xFF);
     switch (reg & 7) {
     case 0: {
         ctrl = data;

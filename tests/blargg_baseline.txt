@@ -24,6 +24,4 @@ apu_reset/irq_flag_cleared.nes
 apu_reset/len_ctrs_enabled.nes
 apu_reset/works_immediately.nes
 
-# PPU: open-bus decay, OAMADDR/OAM stress
-ppu_open_bus/ppu_open_bus.nes
-oam_stress/oam_stress.nes
+# PPU: open-bus decay and OAM stress now pass
