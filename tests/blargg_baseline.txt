@@ -5,8 +5,7 @@
 #   - a ROM listed here starts passing           (stale entry — trim it).
 # Shrinking this file is the point: fix an area, delete its lines, commit.
 
-# PPU: vblank/NMI exact timing, odd/even frame skip (01–09 now pass)
-ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes
+# PPU: vblank/NMI exact timing and odd/even frame skip now all pass (01–10)
 
 # CPU: dummy writes (RMW double-write) and dummy reads are now passing
 

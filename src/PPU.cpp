@@ -448,12 +448,16 @@ void PPU::tick() {
     }
 
     // Advance dot / scanline
-    if (sl == 261 && frameOdd && renderingEnabled() && cyc == 339) {
+    if (sl == 261 && frameOdd && cyc == 338) {
+        oddFrameSkip = renderingEnabled();
+    }
+    if (sl == 261 && frameOdd && oddFrameSkip && cyc == 339) {
         // Odd frame with rendering: skip the final idle dot of pre-render —
         // jump straight from (339,261) to (0,0)
         cyc = 0;
         sl = 0;
         frameOdd = !frameOdd;
+        oddFrameSkip = false;
     } else {
         cyc++;
         if (cyc > 340) {
@@ -462,6 +466,7 @@ void PPU::tick() {
             if (sl > 261) {
                 sl = 0;
                 frameOdd = !frameOdd;
+                oddFrameSkip = false;
             }
         }
     }

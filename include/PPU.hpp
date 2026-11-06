@@ -118,6 +118,7 @@ private:
     // Odd/even frame: every other frame with rendering enabled skips the last
     // idle dot of the pre-render scanline (frame is 1 PPU clock short).
     bool frameOdd = false;
+    bool oddFrameSkip = false;
 };
 
 #endif // PPU_HPP
